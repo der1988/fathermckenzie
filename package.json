@@ -1,0 +1,25 @@
+{
+  "name": "father-mckenzie",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "vite build",
+    "preview": "vite preview --host 0.0.0.0",
+    "test": "node --test tests/game.test.js",
+    "test:browser": "node tests/browser.mjs"
+  },
+  "dependencies": {
+    "@fontsource/barlow-condensed": "5.3.0",
+    "@fontsource/dm-sans": "5.3.0",
+    "matter-js": "0.20.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.58.2",
+    "vite": "7.3.1"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  }
+}
