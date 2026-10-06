@@ -3,14 +3,17 @@ import '@fontsource/dm-sans/400.css';
 import '@fontsource/dm-sans/500.css';
 import '@fontsource/dm-sans/700.css';
 import './style.css';
-import { PLATFORMS, CHARACTER_SCALE, createPriest, movePriest, jump } from './level.js';
-import { createWorld, strike, stepWorld, clearWorld, FLOOR, PORTAL } from './physics.js';
+import { LEVELS, CHARACTER_SCALE, createPriest, movePriest, jump } from './level.js';
+import { createCampaign, completeLevel, nextLevel } from './campaign.js';
+import { createWorld, strike, stepWorld, clearWorld, FLOOR, predictTrajectory, canStrike, DEFAULT_ANGLE, MIN_ANGLE, MAX_ANGLE } from './physics.js';
 const canvas = document.querySelector('#game');
 const ctx = canvas.getContext('2d');
 ctx.imageSmoothingEnabled = false;
 const $ = s => document.querySelector(s);
-let world = createWorld(), started = false, strokes = 0, charge = 0, charging = false, swing = 0, shake = 0, flash = 0, time = 0;
-let priest = createPriest();
+let campaign = createCampaign(), level = LEVELS[0];
+let aiming = false, aimAngle = DEFAULT_ANGLE, shotAngle = DEFAULT_ANGLE, preview = null, previewKey = "";
+let world = createWorld(level), started = false, strokes = 0, charge = 0, charging = false, swing = 0, shake = 0, flash = 0, time = 0;
+let priest = createPriest(level);
 let swingPower = 0, swingStart = 0;
 let keys = new Set(), particles = [], trail = [], soundEnabled = false, audio;
 const W = 960, H = 540;
@@ -21,17 +24,46 @@ function line(points,color,width=1){ctx.strokeStyle=color;ctx.lineWidth=width;ct
 function noise(n){const x=Math.sin(n*127.1+311.7)*43758.5453;return x-Math.floor(x)}
 function tone(freq,duration=.12,type='triangle',gain=.045){if(!soundEnabled)return;audio??=new AudioContext();audio.resume();const o=audio.createOscillator(),g=audio.createGain();o.type=type;o.frequency.setValueAtTime(freq,audio.currentTime);o.frequency.exponentialRampToValueAtTime(Math.max(35,freq/3),audio.currentTime+duration);g.gain.setValueAtTime(gain,audio.currentTime);g.gain.exponentialRampToValueAtTime(.001,audio.currentTime+duration);o.connect(g).connect(audio.destination);o.start();o.stop(audio.currentTime+duration)}
 function burst(x,y,n,color){for(let i=0;i<n;i++)particles.push({x,y,vx:(Math.random()-.5)*8,vy:-Math.random()*6,life:30+Math.random()*25,color})}
-function reset(autoStart=true){clearWorld(world);world=createWorld();priest=createPriest();keys.clear();strokes=0;charge=0;charging=false;swing=0;particles=[];trail=[];started=autoStart;$('#strokes').textContent='00';$('#victory').hidden=true;$('#welcome').hidden=autoStart;$('#status').textContent=autoStart?'Avvicinati allo scheletro e carica il colpo.':'La tua parrocchia ti aspetta.';canvas.focus({preventScroll:true})}
-function start(){started=true;$('#welcome').hidden=true;$('#status').textContent='Avvicinati allo scheletro e carica il colpo.';canvas.focus({preventScroll:true});tone(260)}
-$('#play').onclick=start;$('#again').onclick=()=>reset();$('#reset').onclick=()=>reset();
+function refreshHUD(){
+ $('#level-title').textContent=`${String(campaign.index+1).padStart(2,'0')} / 10 — ${level.title.toUpperCase()}`;
+ $('#target-name').textContent=level.skeleton.name;
+ $('.scene-label').textContent=`${level.title.toUpperCase()} — ANIMA ${campaign.index+1} DI 10`;
+ $('#aim-readout').textContent=`${Math.round(aimAngle)}°`;
+ $('#aim-panel').hidden=!aiming || !started || world.won;
+ $('#reset').disabled=campaign.finished;
+}
+function reset(autoStart=true){
+ if(world.won && campaign.scores.length===campaign.index+1){campaign.scores.pop();campaign.finished=false}
+ clearWorld(world);level=LEVELS[campaign.index];world=createWorld(level);priest=createPriest(level);
+ palette.bone=level.skeleton.bone;palette.darkBone=level.skeleton.accent;
+ keys.clear();strokes=0;charge=0;charging=false;swing=0;particles=[];trail=[];aiming=false;aimAngle=DEFAULT_ANGLE;preview=null;previewKey='';
+ started=autoStart;$('#strokes').textContent='00';$('#victory').hidden=true;$('#welcome').hidden=autoStart;
+ $('#status').textContent=autoStart?`Trova ${level.skeleton.name}. Spazio mostra la traiettoria.`:'Dieci anime aspettano la tua benedizione.';
+ refreshHUD();canvas.focus({preventScroll:true});
+}
+function start(){campaign=createCampaign();reset();tone(260)}
+function openMenu(){
+ started=false;keys.clear();charging=false;charge=0;
+ $('#welcome').hidden=false;$('#victory').hidden=true;$('#resume').hidden=campaign.finished||!hasRun;
+ refreshHUD();
+}
+let hasRun=false;
+$('#play').onclick=()=>{hasRun=true;start()};
+$('#resume').onclick=()=>{started=true;$('#welcome').hidden=true;$('#victory').hidden=!world.won;refreshHUD();canvas.focus({preventScroll:true})};
+$('#menu').onclick=openMenu;
+$('#next').onclick=()=>{if(nextLevel(campaign))reset()};
+$('#again').onclick=()=>{if(campaign.finished)openMenu();else reset()};
+$('#reset').onclick=()=>{if(started&&!campaign.finished)reset()};
+$('#route-list').innerHTML=LEVELS.map((l,i)=>`<span title="${l.skeleton.name}"><b>${String(i+1).padStart(2,'0')}</b>${l.title}</span>`).join('');
+refreshHUD();
 $('#sound').onclick=()=>{soundEnabled=!soundEnabled;$('#sound span').textContent=soundEnabled?'ON':'OFF';$('#sound').setAttribute('aria-pressed',String(soundEnabled));$('#sound').setAttribute('aria-label',soundEnabled?'Disattiva audio':'Attiva audio');tone(400)};
 function backswingAngle(power){return -.45-2*Math.min(1,power/.25)-.3*power}
 function release(){
  if(!charging)return;
- charging=false;swing=24;swingPower=charge;swingStart=backswingAngle(charge);charge=0;
+ charging=false;swing=24;swingPower=charge;shotAngle=aimAngle;swingStart=backswingAngle(charge);charge=0;
 }
 function impact(){
- if(strike(world,priest.x,priest.facing,swingPower,priest.y)){
+ if(strike(world,priest.x,priest.facing,swingPower,priest.y,shotAngle)){
   strokes++;$('#strokes').textContent=String(strokes).padStart(2,'0');shake=7;flash=3;
   burst(world.parts.chest.position.x,world.parts.chest.position.y,20,palette.lime);tone(145,.22,'sawtooth');
   $('#status').textContent=swingPower>.8?'Una benedizione potente. Segui lo scheletro!':'Bel colpo. Salta sulle piattaforme e segui lo scheletro.';
@@ -39,8 +71,10 @@ function impact(){
 }
 window.addEventListener('keydown',e=>{
  if(['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Space','KeyA','KeyS'].includes(e.code))e.preventDefault();
- if(e.code==='KeyR'){reset();return}
+ if(e.code==='Escape'){if(started)openMenu();else if(hasRun&&!campaign.finished)$('#resume').click();return}
+ if(e.code==='KeyR'){if(started&&!campaign.finished)reset();return}
  if(!started||world.won)return;
+ if(e.code==='Space'&&!e.repeat){aiming=!aiming;previewKey='';refreshHUD()}
  if(e.code==='KeyA'&&!e.repeat&&swing===0){charging=true;charge=0}
  if(e.code==='KeyS'&&!e.repeat&&jump(priest))tone(210,.1);
  keys.add(e.code);
@@ -50,7 +84,7 @@ window.addEventListener('blur',()=>{keys.clear();charging=false;charge=0});
 document.addEventListener('visibilitychange',()=>{if(document.hidden){keys.clear();charging=false;charge=0}});
 function background(){
  rect(0,0,W,H,'#202e2b');
- const gradient=ctx.createLinearGradient(0,0,0,442);gradient.addColorStop(0,'#1b2b2c');gradient.addColorStop(.7,'#34443a');gradient.addColorStop(1,'#4a5140');ctx.fillStyle=gradient;ctx.fillRect(0,0,W,442);
+ const gradient=ctx.createLinearGradient(0,0,0,442);gradient.addColorStop(0,level.sky);gradient.addColorStop(.7,'#34443a');gradient.addColorStop(1,'#4a5140');ctx.fillStyle=gradient;ctx.fillRect(0,0,W,442);
  // Pixel moon, stars and drifting cloud bands.
  for(let i=0;i<65;i++){let x=noise(i)*960,y=noise(i+81)*270;rect(x,y,i%7===0?2:1,1,i%3===0?'#8c9980':'#566e62')}
  rect(637,53,46,40,'#a7b58b');rect(630,61,60,25,'#a7b58b');rect(641,48,37,49,'#a7b58b');rect(650,57,12,7,'#929f7b');rect(673,72,10,12,'#929f7b');rect(638,78,9,6,'#bdc79c');
@@ -69,10 +103,10 @@ function background(){
  for(let i=0;i<130;i++){let x=noise(i+60)*960;rect(x,437-noise(i+350)*7,2,7+noise(i+350)*7,i%3?'#69784a':'#87915b')}
  line([[0,488],[120,488],[147,507],[319,507],[339,492],[448,492]],'#3a422b',2);line([[592,480],[702,480],[729,500],[960,500]],'#3a422b',2);
  // Starting cross and distance markers.
- rect(117,389,4,50,'#8c9970');rect(107,400,24,4,'#8c9970');rect(119,390,34,16,'#cbd496');text('START',122,401,'#36402c',7);
+ const sx=level.start.x-40,sy=level.start.y;rect(sx,sy-53,4,50,'#8c9970');rect(sx-10,sy-42,24,4,'#8c9970');rect(sx+2,sy-52,34,16,'#cbd496');text('START',sx+5,sy-41,'#36402c',7);
  for(const [x,l] of [[390,'10 YD'],[565,'20 YD'],[740,'30 YD']]){rect(x,430,2,11,'#a6af78');text(l,x,471,'#778361',7,'center')}
 }
-function portal(){const {x,y}=PORTAL;const glow=ctx.createRadialGradient(x,y,10,x,y,112);glow.addColorStop(0,'#e88e4544');glow.addColorStop(1,'#e88e4500');ctx.fillStyle=glow;ctx.fillRect(x-115,y-115,230,175);
+function portal(){ctx.save();ctx.translate(0,level.portal.y-382);const x=level.portal.x,y=382;const glow=ctx.createRadialGradient(x,y,10,x,y,112);glow.addColorStop(0,'#e88e4544');glow.addColorStop(1,'#e88e4500');ctx.fillStyle=glow;ctx.fillRect(x-115,y-115,230,175);
  // Stepped stone arch.
  rect(x-35,350,9,92,'#656a50');rect(x+27,350,9,92,'#656a50');rect(x-28,332,9,23,'#77775a');rect(x+20,332,9,23,'#77775a');rect(x-20,321,40,12,'#74765a');rect(x-13,314,26,9,'#858060');
  rect(x-26,351,53,91,'#321e22');rect(x-19,333,39,105,'#3b2125');rect(x-11,328,23,110,'#3b2125');
@@ -80,11 +114,11 @@ function portal(){const {x,y}=PORTAL;const glow=ctx.createRadialGradient(x,y,10,
  for(let i=0;i<18;i++){let py=436-((time*.65+i*11)%95),px=x+Math.sin(i*9+time*.04)*22;rect(px,py,2,3,i%3?'#ed9750':'#ffca71')}
  for(let i=0;i<4;i++){rect(x-35,360+i*21,9,2,'#333c2e');rect(x+27,360+i*21,9,2,'#333c2e')}
  rect(x-12,307,24,5,'#c99c5d');text('INFERNO',x,282,'#edb473',12,'center');text('SOLO ANDATA',x,295,'#ae9a6d',7,'center');
- const bob=Math.round(Math.sin(time*.07)*3);arrow(x-70+bob,379,1);arrow(x+70-bob,379,-1);ctx.save();ctx.translate(x,305+bob);ctx.rotate(Math.PI/2);arrow(0,0,1);ctx.restore();rect(x-41,438,84,5,'#858160');
+ const bob=Math.round(Math.sin(time*.07)*3);arrow(x-70+bob,379,1);arrow(x+70-bob,379,-1);ctx.save();ctx.translate(x,305+bob);ctx.rotate(Math.PI/2);arrow(0,0,1);ctx.restore();rect(x-41,438,84,5,'#858160');ctx.restore();
 }
 function arrow(x,y,dir){line([[x-dir*15,y],[x+dir*5,y]],'#ecc174',3);line([[x-dir*2,y-7],[x+dir*6,y],[x-dir*2,y+7]],'#ecc174',3)}
 function drawPlatforms(){
- for(const p of PLATFORMS){
+ for(const p of level.platforms){
   rect(p.x+3,p.y+6,p.width,18,'#16271f');
   rect(p.x,p.y,p.width,p.height,'#586047');rect(p.x,p.y,p.width,4,'#9aa36a');
   rect(p.x,p.y+4,p.width,3,'#727f50');rect(p.x,p.y+p.height-3,p.width,3,'#303e2c');
@@ -137,14 +171,64 @@ function drawPriest(){
  if(charging){rect(x-23,y-66,46,7,'#19221b');rect(x-21,y-64,Math.round(42*charge),3,charge>.85?'#eda35f':palette.lime);text(`${Math.round(charge*100)}%`,x,y-72,palette.lime,8,'center')}
  if(started&&!world.hit)text('PADRE McKENZIE',x,y+19,'#c4cda6',7,'center');
 }
-function drawSkeleton(){for(const [name,b] of Object.entries(world.parts)){ctx.save();ctx.translate(Math.round(b.position.x),Math.round(b.position.y));ctx.rotate(b.angle);ctx.scale(CHARACTER_SCALE,CHARACTER_SCALE);if(name==='head'){rect(-9,-10,18,17,palette.bone);rect(-6,7,12,4,palette.bone);rect(-7,-5,5,5,'#2b3028');rect(3,-5,5,5,'#2b3028');rect(0,1,2,3,'#646b52');for(let i=-4;i<6;i+=3)rect(i,6,1,4,'#6a7056')}else if(name==='chest'){rect(-2,-12,4,25,palette.darkBone);for(let i=0;i<4;i++){rect(-9,-10+i*6,18,3,palette.bone);rect(-9,-10+i*6,3,5,palette.bone);rect(6,-10+i*6,3,5,palette.bone)}}else if(name==='hip'){rect(-8,-4,16,4,palette.bone);rect(-8,-1,5,6,palette.bone);rect(3,-1,5,6,palette.bone)}else{rect(-2,-12,4,25,palette.bone);rect(-4,-12,8,4,palette.bone);rect(-3,8,7,4,palette.darkBone)}ctx.restore()}
- if(!world.hit){text('IL PECCATORE',283,369,'#c6cba6',7,'center');rect(281,374,3,3,'#c6cba6')}
+function drawSkeleton(){for(const [name,b] of Object.entries(world.parts)){ctx.save();ctx.translate(Math.round(b.position.x),Math.round(b.position.y));ctx.rotate(b.angle);ctx.scale(CHARACTER_SCALE,CHARACTER_SCALE);if(name==='head'){rect(-9,-10,18,17,palette.bone);rect(-6,7,12,4,palette.bone);rect(-7,-5,5,5,'#2b3028');rect(3,-5,5,5,'#2b3028');rect(0,1,2,3,'#646b52');for(let i=-4;i<6;i+=3)rect(i,6,1,4,'#6a7056');drawAccessory()}else if(name==='chest'){rect(-2,-12,4,25,palette.darkBone);for(let i=0;i<4;i++){rect(-9,-10+i*6,18,3,palette.bone);rect(-9,-10+i*6,3,5,palette.bone);rect(6,-10+i*6,3,5,palette.bone)}}else if(name==='hip'){rect(-8,-4,16,4,palette.bone);rect(-8,-1,5,6,palette.bone);rect(3,-1,5,6,palette.bone)}else{rect(-2,-12,4,25,palette.bone);rect(-4,-12,8,4,palette.bone);rect(-3,8,7,4,palette.darkBone)}ctx.restore()}
+ const head=world.parts.head.position;text(level.skeleton.name.toUpperCase(),head.x,head.y-33,level.skeleton.accent,7,'center');
 }
-function update(){time++;if(started&&!world.won){const axis=(keys.has('ArrowRight')?1:0)-(keys.has('ArrowLeft')?1:0);movePriest(priest,axis,charging);if(swing===16)impact();if(charging)charge=Math.min(1,charge+1/75);stepWorld(world);if(world.hit&&time%3===0){trail.push({...world.parts.chest.position,life:25});if(time%6===0&&world.parts.chest.speed>4)burst(world.parts.chest.position.x,world.parts.chest.position.y,1,'#a9b884')}
- if(world.won){charging=false;charge=0;burst(PORTAL.x,PORTAL.y,75,palette.orange);tone(600,.7,'triangle');$('#victory').hidden=false;$('#result').textContent=strokes===1?'Un colpo. Un’anima. Un miracolo discutibile.':`${strokes} colpi per la salvezza. Più o meno.`;$('#status').textContent='Missione compiuta. Lo scheletro è all’inferno.'}}
- if(swing>0)swing--;shake*=.82;if(flash>0)flash--;particles.forEach(p=>{p.x+=p.vx;p.y+=p.vy;p.vy+=.15;p.life--});particles=particles.filter(p=>p.life>0);trail.forEach(p=>p.life--);trail=trail.filter(p=>p.life>0);
+function drawAccessory(){
+ const c=level.skeleton.accent;
+ switch(level.skeleton.style){
+  case 'cap':rect(-10,-13,20,5,c);rect(4,-10,11,3,c);break;
+  case 'bandit':rect(-10,-7,20,5,c);rect(8,-5,7,3,c);rect(-6,-6,3,2,'#171e22');rect(3,-6,3,2,'#171e22');break;
+  case 'miner':rect(-10,-15,20,8,c);rect(-12,-9,24,3,c);rect(-3,-14,6,5,'#fff0b0');break;
+  case 'pirate':rect(-14,-14,28,6,'#23222d');rect(-8,-20,16,9,'#23222d');rect(-2,-17,4,4,c);rect(3,-5,6,5,'#171e22');break;
+  case 'topHat':rect(-8,-26,16,16,'#302437');rect(-8,-15,16,4,c);rect(-13,-10,26,3,'#302437');break;
+  case 'helmet':rect(-10,-16,20,9,c);rect(-11,-8,3,12,c);rect(8,-8,3,12,c);rect(-2,-21,4,7,'#d9d9c2');break;
+  case 'bishop':rect(-9,-20,18,12,c);rect(-6,-25,12,6,c);rect(-3,-29,6,5,c);rect(-1,-24,2,14,'#edcf7a');rect(-5,-20,10,2,'#edcf7a');break;
+  case 'flower':rect(-10,-11,20,3,'#738e52');for(const x of [-7,0,7]){rect(x-3,-17,6,6,c);rect(x-1,-15,2,2,'#edaf86')}break;
+  case 'jester':rect(-10,-15,20,6,c);rect(-13,-21,7,9,'#b4c6a0');rect(6,-21,7,9,c);rect(-14,-23,3,3,'#efd78b');rect(12,-23,3,3,'#efd78b');break;
+  case 'crown':rect(-11,-15,22,7,c);for(const x of [-11,-2,7])rect(x,-22,4,10,c);rect(-2,-14,4,4,'#db6d61');break;
+ }
 }
-function draw(){ctx.save();if(shake>.2)ctx.translate((Math.random()-.5)*shake,(Math.random()-.5)*shake);background();drawPlatforms();portal();for(const p of trail){ctx.globalAlpha=p.life/100;rect(p.x-2,p.y-2,4,4,palette.lime)}ctx.globalAlpha=1;if(!world.won)drawSkeleton();drawPriest();for(const p of particles){ctx.globalAlpha=Math.min(1,p.life/20);rect(p.x,p.y,3,3,p.color)}ctx.globalAlpha=1;if(flash){ctx.fillStyle='#edecad18';ctx.fillRect(0,0,W,H)}
+function drawAim(){
+ if(!aiming||!started||world.won)return;
+ if(!canStrike(world,priest.x,priest.facing,priest.y)){text('AVVICINATI ALLO SCHELETRO PER MIRARE',480,38,'#e4c58c',10,'center');return}
+ const power=charging?charge:.5;
+ const bodyKey=Object.values(world.parts).map(b=>`${Math.round(b.position.x)},${Math.round(b.position.y)},${b.angle.toFixed(1)}`).join(';');
+ const key=`${bodyKey}/${priest.facing}/${power.toFixed(2)}/${Math.round(aimAngle)}`;
+ if(!preview || (key!==previewKey && time%6===0)){preview=predictTrajectory(world,priest.facing,power,aimAngle);previewKey=key}
+ const points=preview.points;
+ ctx.strokeStyle=preview.won?'#eece79b0':'#dced9780';ctx.lineWidth=1.5;ctx.setLineDash([4,7]);ctx.beginPath();points.forEach((p,i)=>i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y));ctx.stroke();ctx.setLineDash([]);
+ for(let i=0;i<points.length;i+=3)rect(points[i].x-1,points[i].y-1,3,3,preview.won?'#f5cf74':'#dced97');
+ const end=points.at(-1);line([[end.x-5,end.y-5],[end.x+5,end.y+5]],'#edc277',2);line([[end.x+5,end.y-5],[end.x-5,end.y+5]],'#edc277',2);
+ text(`${Math.round(aimAngle)}°  /  POTENZA ${Math.round(power*100)}%${charging?'':' · TIENI A PER VARIARE'}`,480,38,'#dced97',10,'center');
+}
+function update(){
+ time++;
+ if(started&&!world.won){
+  if(aiming){const change=(keys.has('ArrowUp')?1:0)-(keys.has('ArrowDown')?1:0);aimAngle=Math.max(MIN_ANGLE,Math.min(MAX_ANGLE,aimAngle+change*.75));$('#aim-readout').textContent=`${Math.round(aimAngle)}°`}
+  const axis=(keys.has('ArrowRight')?1:0)-(keys.has('ArrowLeft')?1:0);
+  movePriest(priest,axis,charging,level.platforms);
+  if(swing===16)impact();
+  if(charging)charge=Math.min(1,charge+1/75);
+  stepWorld(world);
+  if(world.hit&&time%3===0){trail.push({...world.parts.chest.position,life:25});if(time%6===0&&world.parts.chest.speed>4)burst(world.parts.chest.position.x,world.parts.chest.position.y,1,'#a9b884')}
+  if(world.won){
+   charging=false;charge=0;keys.clear();completeLevel(campaign,strokes);
+   burst(level.portal.x,level.portal.y,75,palette.orange);tone(600,.7,'triangle');
+   $('#victory').hidden=false;$('#next').hidden=campaign.finished;
+   $('#victory .eyebrow').textContent=campaign.finished?'10 ANIME SU 10 · MISSIONE COMPIUTA':`ANIMA ${campaign.index+1} / 10 CONSEGNATA`;
+   $('#victory h2').textContent=campaign.finished?'La parrocchia è salva.':'Riposa in pezzi.';
+   $('#result').textContent=campaign.finished?`Hai completato tutti i 10 livelli in ${campaign.scores.reduce((a,b)=>a+b,0)} colpi. Anche Re Calcagno è all’inferno. Fine.`:`${level.skeleton.name}: ${strokes===1?'un colpo':strokes+' colpi'}. La prossima anima ti aspetta.`;
+   $('#again').textContent=campaign.finished?'TORNA AL MENU':'RIPROVA IL LIVELLO';
+   $('#status').textContent=campaign.finished?'Fine del gioco. Tutte le anime sono state consegnate.':`${level.skeleton.name} è all’inferno. Prosegui al prossimo livello.`;
+   refreshHUD();
+  }
+ }
+ if(started&&swing>0)swing--;
+ shake*=.82;if(flash>0)flash--;
+ particles.forEach(p=>{p.x+=p.vx;p.y+=p.vy;p.vy+=.15;p.life--});particles=particles.filter(p=>p.life>0);trail.forEach(p=>p.life--);trail=trail.filter(p=>p.life>0);
+}
+function draw(){ctx.save();if(shake>.2)ctx.translate((Math.random()-.5)*shake,(Math.random()-.5)*shake);background();drawPlatforms();portal();drawAim();for(const p of trail){ctx.globalAlpha=p.life/100;rect(p.x-2,p.y-2,4,4,palette.lime)}ctx.globalAlpha=1;if(!world.won)drawSkeleton();drawPriest();for(const p of particles){ctx.globalAlpha=Math.min(1,p.life/20);rect(p.x,p.y,3,3,p.color)}ctx.globalAlpha=1;if(flash){ctx.fillStyle='#edecad18';ctx.fillRect(0,0,W,H)}
  // Vignette with crisp scanlines for a quiet CRT feel.
  const v=ctx.createRadialGradient(480,300,170,480,280,580);v.addColorStop(0,'#0000');v.addColorStop(1,'#07130e66');ctx.fillStyle=v;ctx.fillRect(0,0,W,H);ctx.globalAlpha=.045;for(let y=0;y<H;y+=3)rect(0,y,W,1,'#000');ctx.globalAlpha=1;ctx.restore()}
 let previous=performance.now(),accumulator=0;function frame(now){accumulator+=Math.min(now-previous,100);previous=now;while(accumulator>=1000/60){update();accumulator-=1000/60}draw();requestAnimationFrame(frame)}requestAnimationFrame(frame);
