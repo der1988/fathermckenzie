@@ -1,6 +1,6 @@
 # Father McKenzie — Unholy in one
 
-Prototipo browser di golf/baseball in pixel art: un prete con tunica nera, croce e mazza di legno deve spedire uno scheletro nel portale dell'inferno. Un livello fisso, sette corpi fisici collegati in un ragdoll, colpi caricabili, particelle, audio sintetizzato opzionale e contatore dei colpi.
+Prototipo browser di golf/baseball in pixel art: un prete con tunica nera, croce e mazza di legno deve spedire uno scheletro nel portale dell'inferno. Un livello fisso con tre piattaforme solide, personaggi compatti, sette corpi fisici collegati in un ragdoll, colpi caricabili, particelle, audio sintetizzato opzionale e contatore dei colpi.
 
 Grafica originale disegnata con Canvas 2D. Ispirazione per il movimento: azione fisica e personaggi articolati; non vengono usati asset di My Friend Pedro. Aseprite non è necessario per avviare il progetto e non è stato usato per questo prototipo.
 
@@ -9,12 +9,12 @@ Grafica originale disegnata con Canvas 2D. Ispirazione per il movimento: azione 
 Browser desktop e tastiera. Premi **Inizia la missione**.
 
 - **← / →**: muovi il prete.
-- **↑**: salta.
-- **Spazio tenuto premuto**: carica la mazza; rilascialo per colpire.
+- **S**: salta (anche dalle piattaforme).
+- **A tenuto premuto**: porta la mazza indietro; rilascialo per colpire con uno swing in avanti.
 - **R** o **Ricomincia**: ripristina la partita.
 - **Audio ON/OFF**: abilita o disabilita gli effetti.
 
-Avvicinati allo scheletro e guarda nella sua direzione. Un colpo intorno al 35–50% può raggiungere il portale in un tiro; la massima potenza può superarlo. Se sbagli, raggiungi lo scheletro e colpiscilo di nuovo, anche verso sinistra. Vince lo scheletro che entra nel portale, non il prete. Non è necessario premere la freccia giù.
+Avvicinati allo scheletro e guarda nella sua direzione. Un colpo intorno al 45–60% può raggiungere il portale in un tiro; la massima potenza può superarlo. Se sbagli, raggiungi lo scheletro e colpiscilo di nuovo, anche verso sinistra. Vince lo scheletro che entra nel portale, non il prete. Le frecce verticali e spazio non sono assegnati. Salta sulle piattaforme per seguire lo scheletro e colpirlo da diverse altezze.
 
 ## Sviluppo
 
@@ -33,7 +33,7 @@ npm run build
 npm run preview
 ```
 
-I test della fisica verificano colpi mancati, forza variabile, ragdoll, vittoria e colpi successivi. Per la verifica completa del browser, avvia il server di sviluppo in un altro terminale e usa un'installazione di Chromium:
+I test della fisica verificano colpi mancati, forza variabile, ragdoll, vittoria colpi successivi, salto, atterraggio, soffitti e collisioni dello scheletro con le piattaforme. Per la verifica completa del browser, avvia il server di sviluppo in un altro terminale e usa un'installazione di Chromium:
 
 ```sh
 CHROMIUM_PATH=/usr/bin/chromium npm run test:browser
@@ -53,6 +53,7 @@ I push successivi su `main` generano automaticamente nuovi deployment se l'integ
 ## Struttura
 
 - `src/main.js`: rendering pixel art, input, animazioni, audio e ciclo di gioco.
+- `src/level.js`: geometria delle piattaforme e movimento con collisioni del prete.
 - `src/physics.js`: mondo Matter.js, articolazioni, colpi e rilevamento del portale.
 - `src/style.css`: interfaccia responsive.
 - `tests/`: test della fisica e partita automatizzata in Chromium.
