@@ -3,90 +3,76 @@ import '@fontsource/dm-sans/400.css';
 import '@fontsource/dm-sans/500.css';
 import '@fontsource/dm-sans/700.css';
 import './style.css';
-import { LEVELS, WORLD_WIDTH, CHARACTER_SCALE, createPriest, movePriest, jump } from './level.js';
-import { createCampaign, completeLevel, nextLevel } from './campaign.js';
-import { createWorld, strike, stepWorld, clearWorld, FLOOR, predictTrajectory, canStrike, DEFAULT_ANGLE, MIN_ANGLE, MAX_ANGLE } from './physics.js';
-const canvas = document.querySelector('#game');
-const ctx = canvas.getContext('2d');
-ctx.imageSmoothingEnabled = false;
-const $ = s => document.querySelector(s);
-let campaign = createCampaign(), level = LEVELS[0];
-let aiming = false, aimAngle = DEFAULT_ANGLE, shotAngle = DEFAULT_ANGLE, preview = null, previewKey = "";
-let world = createWorld(level), started = false, strokes = 0, charge = 0, charging = false, swing = 0, shake = 0, flash = 0, time = 0;
-let priest = createPriest(level);
-let swingPower = 0, swingStart = 0;
-let keys = new Set(), particles = [], trail = [], soundEnabled = false, audio;
-const W = 960, H = 540;
-const palette = { lime: '#dced97', bone: '#ddd8ad', darkBone: '#919779', orange: '#ef934e' };
+import {createArena,stepArena,hitEnemy,TYPES,FLOOR,CENTER} from './arena.js';
+const canvas=document.querySelector('#game'),ctx=canvas.getContext('2d'),$=s=>document.querySelector(s);
+const W=960,H=540,CHARACTER_SCALE=1;
+const palette={lime:'#dced97',orange:'#ef934e'};
+let game=createArena(),started=false,hasRun=false,charge=0,charging=false,swing=0,swingPower=0,swingStart=0,swingFacing=1;
+let shake=0,flash=0,time=0,particles=[],labels=[],soundEnabled=false,audio;
+let priest={x:CENTER,y:FLOOR,facing:1,walking:false,grounded:true,gait:0,landing:0,vy:0};
+let best=0;try{best=Number(localStorage.getItem('father-arena-best'))||0}catch{}
+function refreshHUD(){
+ $('#score').textContent=String(game.score).padStart(2,'0');$('#lives').textContent='✝'.repeat(Math.max(0,game.lives));
+ $('#wave').textContent=`ORDA ${1+Math.floor(game.elapsed/20)} · ${Math.floor(game.elapsed)}s`;
+ $('#best').textContent=best;$('#explosions').textContent=game.explosions;
+ $('#power-fill').style.width=`${charge*100}%`;$('#power-fill').style.background=charge>=1?'#df7264':'#dced97';
+ $('#power-label').textContent=charging?`${Math.round(charge*100)}% · ${charge>=1?'ESPLOSIONE · 0 PUNTI':charge>=.65?'FUORICAMPO PER TUTTI':charge>=.5?'FUORICAMPO SCHELETRI / ZOMBIE':charge>=.35?'FUORICAMPO SCHELETRI':'RESPINTA'}`:'TIENI A O SPAZIO · RILASCIA PER COLPIRE';
+}
+function cancelCharge(){charging=false;charge=0;chargeKey=null;}
+function start(){game=createArena();started=true;hasRun=true;cancelCharge();swing=0;particles=[];labels=[];priest.facing=1;$('#welcome').hidden=true;$('#victory').hidden=true;$('#status').textContent='La messa è finita. L’assedio no.';refreshHUD();canvas.focus({preventScroll:true});}
+function openMenu(){started=false;cancelCharge();$('#welcome').hidden=false;$('#victory').hidden=true;$('#resume').hidden=!hasRun||game.over;refreshHUD();}
+function resume(){if(!hasRun||game.over)return;started=true;$('#welcome').hidden=true;canvas.focus({preventScroll:true});}
+$('#play').onclick=start;$('#again').onclick=start;$('#resume').onclick=resume;$('#menu').onclick=openMenu;$('#reset').onclick=start;
+$('#sound').onclick=()=>{soundEnabled=!soundEnabled;$('#sound span').textContent=soundEnabled?'ON':'OFF';$('#sound').setAttribute('aria-pressed',String(soundEnabled));tone(400)};
+function backswingAngle(power){return -.45-2*Math.min(1,power/.25)-.3*power;}
+let chargeKey=null;
+function beginCharge(key){if(!started||game.over||swing>0||charging)return;chargeKey=key;charging=true;charge=0;}
+function release(){if(!charging)return;charging=false;chargeKey=null;swing=24;swingPower=charge;swingFacing=priest.facing;swingStart=backswingAngle(charge);charge=0;}
+function turn(direction){if(swing===0)priest.facing=direction;}
+window.addEventListener('keydown',e=>{
+ const controls=['ArrowLeft','ArrowRight','KeyA','Space'];
+ if(controls.includes(e.code)&&e.target.tagName==='BUTTON')return;
+ if(controls.includes(e.code))e.preventDefault();
+ if(e.repeat)return;
+ if(e.code==='Escape'){if(started)openMenu();else resume();return;}
+ if(!started||game.over)return;
+ if(e.code==='KeyR'){start();return;}
+ if(e.code==='ArrowLeft')turn(-1);if(e.code==='ArrowRight')turn(1);
+ if(e.code==='KeyA'||e.code==='Space')beginCharge(e.code);
+});
+window.addEventListener('keyup',e=>{if(e.code===chargeKey)release()});
+window.addEventListener('blur',()=>{if(started&&!game.over)openMenu()});
+document.addEventListener('visibilitychange',()=>{if(document.hidden&&started&&!game.over)openMenu()});
+for(const [id,dir] of [['left',-1],['right',1]])$('#'+id).onclick=()=>{turn(dir);canvas.focus({preventScroll:true})};
+$('#bat').onpointerdown=e=>{e.preventDefault();$('#bat').setPointerCapture(e.pointerId);beginCharge('pointer')};
+$('#bat').onpointerup=()=>{if(chargeKey==='pointer')release()};$('#bat').onpointercancel=cancelCharge;
+function update(){
+ if(started&&!game.over){
+  time++;if(charging)charge=Math.min(1,charge+1/60);
+  if(swing===16){const hit=hitEnemy(game,swingFacing,swingPower);if(!hit){$('#status').textContent='Aria benedetta. Aspetta che siano a portata.';tone(80,.08)}}
+  if(swing>0)swing--;
+  stepArena(game);
+  for(const event of game.events){
+   if(event.type==='explode'){burst(event.x,event.y,45,event.color);labels.push({...event,label:'POLVERE ALLA POLVERE · +0',life:80});shake=8;tone(75,.25,'sawtooth');$('#status').textContent='Cremazione istantanea. Punti: zero. Fattura: salata.';}
+   if(event.type==='score'){labels.push({...event,label:'FUORICAMPO +1',life:90});tone(550,.2);$('#status').textContent='Un’anima fuori parrocchia. +1';}
+   if(event.type==='launch'||event.type==='push'){burst(event.x,event.y,8,palette.lime);shake=3;tone(145,.15,'triangle');}
+   if(event.type==='hurt'){shake=10;flash=7;tone(65,.3,'sawtooth');$('#status').textContent='Il gregge morde. Gira la mazza dall’altra parte!';}
+  }game.events=[];
+  if(game.score>best){best=game.score;try{localStorage.setItem('father-arena-best',String(best))}catch{}}
+  if(game.over){started=false;cancelCharge();$('#victory').hidden=false;$('#result').textContent=`${game.score} fuoricampo · ${game.explosions} esplosioni senza punti · ${Math.floor(game.elapsed)} secondi sopravvissuti.`;}
+  refreshHUD();
+ }
+ if(started||game.over){particles.forEach(p=>{p.x+=p.vx;p.y+=p.vy;p.vy+=.15;p.life--});particles=particles.filter(p=>p.life>0);labels.forEach(p=>{p.y-=.35;p.life--});labels=labels.filter(p=>p.life>0);shake*=.82;if(flash>0)flash--;}
+}
 function rect(x,y,w,h,color){ctx.fillStyle=color;ctx.fillRect(Math.round(x),Math.round(y),w,h)}
 function text(str,x,y,color='#c7d0ad',size=10,align='left'){ctx.fillStyle=color;ctx.font=`bold ${size}px monospace`;ctx.textAlign=align;ctx.fillText(str,Math.round(x),Math.round(y));ctx.textAlign='left'}
 function line(points,color,width=1){ctx.strokeStyle=color;ctx.lineWidth=width;ctx.beginPath();points.forEach(([x,y],i)=>i?ctx.lineTo(Math.round(x),Math.round(y)):ctx.moveTo(Math.round(x),Math.round(y)));ctx.stroke()}
 function noise(n){const x=Math.sin(n*127.1+311.7)*43758.5453;return x-Math.floor(x)}
 function tone(freq,duration=.12,type='triangle',gain=.045){if(!soundEnabled)return;audio??=new AudioContext();audio.resume();const o=audio.createOscillator(),g=audio.createGain();o.type=type;o.frequency.setValueAtTime(freq,audio.currentTime);o.frequency.exponentialRampToValueAtTime(Math.max(35,freq/3),audio.currentTime+duration);g.gain.setValueAtTime(gain,audio.currentTime);g.gain.exponentialRampToValueAtTime(.001,audio.currentTime+duration);o.connect(g).connect(audio.destination);o.start();o.stop(audio.currentTime+duration)}
 function burst(x,y,n,color){for(let i=0;i<n;i++)particles.push({x,y,vx:(Math.random()-.5)*8,vy:-Math.random()*6,life:30+Math.random()*25,color})}
-function refreshHUD(){
- $('#level-title').textContent=`${String(campaign.index+1).padStart(2,'0')} / 10 — ${level.title.toUpperCase()}`;
- $('#target-name').textContent=level.skeleton.name;
- $('#puzzle-hint').textContent=level.hint;
- $('#seals').textContent=`${world.sealsCollected}/${level.seals.length}`;
- $('.scene-label').textContent=`${level.title.toUpperCase()} — ANIMA ${campaign.index+1} DI 10`;
- $('#aim-readout').textContent=`${Math.round(aimAngle)}°`;
- $('#aim-panel').hidden=!aiming || !started || world.won;
- $('#reset').disabled=campaign.finished;
-}
-function reset(autoStart=true){
- if(world.won && campaign.scores.length===campaign.index+1){campaign.scores.pop();campaign.finished=false}
- clearWorld(world);level=LEVELS[campaign.index];world=createWorld(level);priest=createPriest(level);
- palette.bone=level.skeleton.bone;palette.darkBone=level.skeleton.accent;
- keys.clear();strokes=0;charge=0;charging=false;swing=0;particles=[];trail=[];aiming=false;aimAngle=DEFAULT_ANGLE;preview=null;previewKey='';
- started=autoStart;$('#strokes').textContent='00';$('#victory').hidden=true;$('#welcome').hidden=autoStart;
- $('#status').textContent=autoStart?`Trova ${level.skeleton.name}. Spazio mostra la traiettoria.`:'Dieci anime aspettano la tua benedizione.';
- refreshHUD();canvas.focus({preventScroll:true});
-}
-function start(){campaign=createCampaign();reset();tone(260)}
-function openMenu(){
- started=false;keys.clear();charging=false;charge=0;
- $('#welcome').hidden=false;$('#victory').hidden=true;$('#resume').hidden=campaign.finished||!hasRun;
- refreshHUD();
-}
-let hasRun=false;
-$('#play').onclick=()=>{hasRun=true;start()};
-$('#resume').onclick=()=>{started=true;$('#welcome').hidden=true;$('#victory').hidden=!world.won;refreshHUD();canvas.focus({preventScroll:true})};
-$('#menu').onclick=openMenu;
-$('#next').onclick=()=>{if(nextLevel(campaign))reset()};
-$('#again').onclick=()=>{if(campaign.finished)openMenu();else reset()};
-$('#reset').onclick=()=>{if(started&&!campaign.finished)reset()};
-$('#route-list').innerHTML=LEVELS.map((l,i)=>`<span title="${l.skeleton.name}"><b>${String(i+1).padStart(2,'0')}</b>${l.title}</span>`).join('');
-refreshHUD();
-$('#sound').onclick=()=>{soundEnabled=!soundEnabled;$('#sound span').textContent=soundEnabled?'ON':'OFF';$('#sound').setAttribute('aria-pressed',String(soundEnabled));$('#sound').setAttribute('aria-label',soundEnabled?'Disattiva audio':'Attiva audio');tone(400)};
-function backswingAngle(power){return -.45-2*Math.min(1,power/.25)-.3*power}
-function release(){
- if(!charging)return;
- charging=false;swing=24;swingPower=charge;shotAngle=aimAngle;swingStart=backswingAngle(charge);charge=0;
-}
-function impact(){
- if(strike(world,priest.x,priest.facing,swingPower,priest.y,shotAngle)){
-  strokes++;$('#strokes').textContent=String(strokes).padStart(2,'0');shake=7;flash=3;
-  burst(world.parts.chest.position.x,world.parts.chest.position.y,20,palette.lime);tone(145,.22,'sawtooth');
-  $('#status').textContent=swingPower>.8?'Una benedizione potente. Segui lo scheletro!':'Bel colpo. Salta sulle piattaforme e segui lo scheletro.';
- }else{tone(80,.08);$('#status').textContent='Troppo lontano! Avvicinati e guarda verso lo scheletro.'}
-}
-window.addEventListener('keydown',e=>{
- if(['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Space','KeyA','KeyS'].includes(e.code))e.preventDefault();
- if(e.code==='Escape'){if(started)openMenu();else if(hasRun&&!campaign.finished)$('#resume').click();return}
- if(e.code==='KeyR'){if(started&&!campaign.finished)reset();return}
- if(!started||world.won)return;
- if(e.code==='Space'&&!e.repeat){aiming=!aiming;previewKey='';refreshHUD()}
- if(e.code==='KeyA'&&!e.repeat&&swing===0){charging=true;charge=0}
- if(e.code==='KeyS'&&!e.repeat&&jump(priest))tone(210,.1);
- keys.add(e.code);
-});
-window.addEventListener('keyup',e=>{keys.delete(e.code);if(e.code==='KeyA')release()});
-window.addEventListener('blur',()=>{keys.clear();charging=false;charge=0});
-document.addEventListener('visibilitychange',()=>{if(document.hidden){keys.clear();charging=false;charge=0}});
 function background(){
  rect(0,0,W,H,'#202e2b');
- const gradient=ctx.createLinearGradient(0,0,0,442);gradient.addColorStop(0,level.sky);gradient.addColorStop(.7,'#34443a');gradient.addColorStop(1,'#4a5140');ctx.fillStyle=gradient;ctx.fillRect(0,0,W,442);
+ const gradient=ctx.createLinearGradient(0,0,0,442);gradient.addColorStop(0,'#1b2b2c');gradient.addColorStop(.7,'#34443a');gradient.addColorStop(1,'#4a5140');ctx.fillStyle=gradient;ctx.fillRect(0,0,W,442);
  // Pixel moon, stars and drifting cloud bands.
  for(let i=0;i<65;i++){let x=noise(i)*960,y=noise(i+81)*270;rect(x,y,i%7===0?2:1,1,i%3===0?'#8c9980':'#566e62')}
  rect(637,53,46,40,'#a7b58b');rect(630,61,60,25,'#a7b58b');rect(641,48,37,49,'#a7b58b');rect(650,57,12,7,'#929f7b');rect(673,72,10,12,'#929f7b');rect(638,78,9,6,'#bdc79c');
@@ -105,29 +91,6 @@ function background(){
  for(let i=0;i<130;i++){let x=noise(i+60)*960;rect(x,437-noise(i+350)*7,2,7+noise(i+350)*7,i%3?'#69784a':'#87915b')}
  line([[0,488],[120,488],[147,507],[319,507],[339,492],[448,492]],'#3a422b',2);line([[592,480],[702,480],[729,500],[960,500]],'#3a422b',2);
 
-}
-function portal(){
- const locked=world.sealsCollected<level.seals.length;
- ctx.save();if(locked)ctx.globalAlpha=.4;ctx.save();ctx.translate(0,level.portal.y-382);const x=level.portal.x,y=382;const glow=ctx.createRadialGradient(x,y,10,x,y,112);glow.addColorStop(0,'#e88e4544');glow.addColorStop(1,'#e88e4500');ctx.fillStyle=glow;ctx.fillRect(x-115,y-115,230,175);
- // Stepped stone arch.
- rect(x-35,350,9,92,'#656a50');rect(x+27,350,9,92,'#656a50');rect(x-28,332,9,23,'#77775a');rect(x+20,332,9,23,'#77775a');rect(x-20,321,40,12,'#74765a');rect(x-13,314,26,9,'#858060');
- rect(x-26,351,53,91,'#321e22');rect(x-19,333,39,105,'#3b2125');rect(x-11,328,23,110,'#3b2125');
- for(let i=0;i<8;i++){const w=39-i*4;let yy=346+i*10;line([[x-w/2,432],[x-w/2,yy],[x,yy-12],[x+w/2,yy],[x+w/2,432]],i%2?'#78412e':'#aa5430',2)}
- for(let i=0;i<18;i++){let py=436-((time*.65+i*11)%95),px=x+Math.sin(i*9+time*.04)*22;rect(px,py,2,3,i%3?'#ed9750':'#ffca71')}
- for(let i=0;i<4;i++){rect(x-35,360+i*21,9,2,'#333c2e');rect(x+27,360+i*21,9,2,'#333c2e')}
- rect(x-12,307,24,5,'#c99c5d');text('INFERNO',x,282,'#edb473',12,'center');text('SOLO ANDATA',x,295,'#ae9a6d',7,'center');
- const bob=Math.round(Math.sin(time*.07)*3);arrow(x-70+bob,379,1);arrow(x+70-bob,379,-1);ctx.save();ctx.translate(x,305+bob);ctx.rotate(Math.PI/2);arrow(0,0,1);ctx.restore();rect(x-41,438,84,5,'#858160');ctx.restore();ctx.restore();
- if(locked)text('SCIOGLI I SIGILLI',level.portal.x,level.portal.y-115,'#edb473',10,'center');
-}
-function arrow(x,y,dir){line([[x-dir*15,y],[x+dir*5,y]],'#ecc174',3);line([[x-dir*2,y-7],[x+dir*6,y],[x-dir*2,y+7]],'#ecc174',3)}
-function drawPlatforms(){
- for(const p of level.platforms){
-  rect(p.x+3,p.y+6,p.width,18,'#16271f');
-  rect(p.x,p.y,p.width,p.height,'#586047');rect(p.x,p.y,p.width,4,'#9aa36a');
-  rect(p.x,p.y+4,p.width,3,'#727f50');rect(p.x,p.y+p.height-3,p.width,3,'#303e2c');
-  for(let x= p.x+18;x<p.x+p.width;x+=24){rect(x,p.y+8,2,7,'#344530');rect(x-9,p.y+8,10,1,'#778061')}
-  for(let i=0;i<6;i++){let x=p.x+8+i*17;rect(x,p.y-3,2,4,'#8b995e');if(i%2===0){rect(x,p.y+18,2,14,'#536a3f');rect(x-3,p.y+23,6,2,'#667c47')}}
- }
 }
 function drawPriest(){
  const {x,y,facing,walking,grounded,gait,landing}=priest;
@@ -171,84 +134,39 @@ function drawPriest(){
  ctx.restore();
  if(swing>0&&progress>.2&&progress<.48){ctx.strokeStyle='#e4dda580';ctx.lineWidth=3;ctx.beginPath();ctx.arc(6,-37,51,batAngle-.55,batAngle);ctx.stroke()}
  ctx.restore();ctx.restore();
- if(charging){rect(x-23,y-66,46,7,'#19221b');rect(x-21,y-64,Math.round(42*charge),3,charge>.85?'#eda35f':palette.lime);text(`${Math.round(charge*100)}%`,x,y-72,palette.lime,8,'center')}
- if(started&&!world.hit)text('PADRE McKENZIE',x,y+19,'#c4cda6',7,'center');
+ if(charging){rect(x-23,y-66,46,7,'#19221b');rect(x-21,y-64,Math.round(42*charge),3,charge>=1?'#ed6660':charge>=.35?'#dced97':'#a0b6bb');text(`${Math.round(charge*100)}%`,x,y-72,palette.lime,8,'center')}
+ if(started)text('PADRE McKENZIE',x,y+19,'#c4cda6',7,'center');
 }
-function drawSkeleton(){for(const [name,b] of Object.entries(world.parts)){ctx.save();ctx.translate(Math.round(b.position.x),Math.round(b.position.y));ctx.rotate(b.angle);ctx.scale(CHARACTER_SCALE,CHARACTER_SCALE);if(name==='head'){rect(-9,-10,18,17,palette.bone);rect(-6,7,12,4,palette.bone);rect(-7,-5,5,5,'#2b3028');rect(3,-5,5,5,'#2b3028');rect(0,1,2,3,'#646b52');for(let i=-4;i<6;i+=3)rect(i,6,1,4,'#6a7056');drawAccessory()}else if(name==='chest'){rect(-2,-12,4,25,palette.darkBone);for(let i=0;i<4;i++){rect(-9,-10+i*6,18,3,palette.bone);rect(-9,-10+i*6,3,5,palette.bone);rect(6,-10+i*6,3,5,palette.bone)}}else if(name==='hip'){rect(-8,-4,16,4,palette.bone);rect(-8,-1,5,6,palette.bone);rect(3,-1,5,6,palette.bone)}else{rect(-2,-12,4,25,palette.bone);rect(-4,-12,8,4,palette.bone);rect(-3,8,7,4,palette.darkBone)}ctx.restore()}
- const head=world.parts.head.position;text(level.skeleton.name.toUpperCase(),head.x,head.y-33,level.skeleton.accent,7,'center');
-}
-function drawAccessory(){
- if(level.skeleton.detail===1)line([[-5,-9],[-2,-7],[-4,-5]],'#878674',1);
- if(level.skeleton.detail===2)rect(2,7,2,3,'#2b3028');
- const c=level.skeleton.accent;
- switch(level.skeleton.style){
-  case 'cap':rect(-10,-13,20,5,c);rect(4,-10,11,3,c);break;
-  case 'bandit':rect(-10,-7,20,5,c);rect(8,-5,7,3,c);rect(-6,-6,3,2,'#171e22');rect(3,-6,3,2,'#171e22');break;
-  case 'miner':rect(-10,-15,20,8,c);rect(-12,-9,24,3,c);rect(-3,-14,6,5,'#fff0b0');break;
-  case 'pirate':rect(-14,-14,28,6,'#23222d');rect(-8,-20,16,9,'#23222d');rect(-2,-17,4,4,c);rect(3,-5,6,5,'#171e22');break;
-  case 'topHat':rect(-8,-26,16,16,'#302437');rect(-8,-15,16,4,c);rect(-13,-10,26,3,'#302437');break;
-  case 'helmet':rect(-10,-16,20,9,c);rect(-11,-8,3,12,c);rect(8,-8,3,12,c);rect(-2,-21,4,7,'#d9d9c2');break;
-  case 'bishop':rect(-9,-20,18,12,c);rect(-6,-25,12,6,c);rect(-3,-29,6,5,c);rect(-1,-24,2,14,'#edcf7a');rect(-5,-20,10,2,'#edcf7a');break;
-  case 'flower':rect(-10,-11,20,3,'#738e52');for(const x of [-7,0,7]){rect(x-3,-17,6,6,c);rect(x-1,-15,2,2,'#edaf86')}break;
-  case 'jester':rect(-10,-15,20,6,c);rect(-13,-21,7,9,'#b4c6a0');rect(6,-21,7,9,c);rect(-14,-23,3,3,'#efd78b');rect(12,-23,3,3,'#efd78b');break;
-  case 'crown':rect(-11,-15,22,7,c);for(const x of [-11,-2,7])rect(x,-22,4,10,c);rect(-2,-14,4,4,'#db6d61');break;
+function drawEnemy(e){
+ const c=TYPES[e.type].color,walk=Math.sin(e.age*(e.type==='zombie'?5:9))*5;
+ ctx.save();ctx.translate(e.x,e.y-28);ctx.rotate(e.rotation);ctx.scale(e.type==='monster'?1.35:1,e.type==='monster'?1.25:1);
+ if(e.type==='skeleton'){
+  rect(-9,-28,18,16,c);rect(-6,-12,12,4,c);rect(-6,-24,4,5,'#253228');rect(3,-24,4,5,'#253228');
+  line([[0,-7],[0,12]],'#949a7f',3);for(let i=0;i<4;i++)rect(-8,-6+i*5,16,2,c);
+  line([[-7,-5],[-15,8+walk]],c,3);line([[7,-5],[15,8-walk]],c,3);
+ }else{
+  rect(-11,-30,22,20,c);rect(-13,-11,26,26,e.type==='zombie'?'#596a50':'#754f50');
+  rect(-7,-25,4,4,'#e9bf71');rect(4,-25,4,4,'#e9bf71');rect(-5,-16,12,3,'#292823');
+  line([[-12,-6],[-22,1+walk]],c,7);line([[12,-6],[22,1-walk]],c,7);
+  if(e.type==='monster'){line([[-9,-28],[-15,-40],[-5,-32]],'#dac6a0',4);line([[9,-28],[15,-40],[5,-32]],'#dac6a0',4);if(e.state==='approach'&&e.age%3>2)text('!',0,-47,'#ef934e',17,'center');}
+  else{rect(-11,-30,13,5,'#414d39');rect(3,-11,4,14,c);}
  }
+ line([[-5,12],[-8-walk,26]],c,e.type==='skeleton'?3:6);line([[5,12],[8+walk,26]],c,e.type==='skeleton'?3:6);
+ ctx.restore();
 }
-function drawSeals(){
- const sx=level.start.x-40,sy=level.start.y;rect(sx,sy-53,4,50,'#8c9970');rect(sx-10,sy-42,24,4,'#8c9970');text('START',sx,sy-60,'#cbd496',9,'center');
- for(const [i,s] of level.seals.entries()){
-  const done=i<world.sealsCollected,active=i===world.sealsCollected;
-  ctx.save();ctx.globalAlpha=done?.3:active?.85:.35;
-  ctx.strokeStyle=done?'#9bb685':active?'#f2cd76':'#a1b4bd';ctx.lineWidth=2;ctx.setLineDash([5,7]);
-  ctx.beginPath();ctx.arc(s.x,s.y,s.radius,0,Math.PI*2);ctx.stroke();ctx.setLineDash([]);
-  text(done?'✓':String(i+1),s.x,s.y-10,ctx.strokeStyle,22,'center');
-  text(done?'SCIOLTO':active?'PROSSIMO SIGILLO':'SIGILLO',s.x,s.y+10,ctx.strokeStyle,9,'center');ctx.restore();
- }
+function draw(){
+ ctx.save();if(shake>.2)ctx.translate((Math.random()-.5)*shake,(Math.random()-.5)*shake);background();
+ // The dotted semicircles show bat reach, not a predicted shot.
+ ctx.strokeStyle='#dced9730';ctx.setLineDash([3,7]);ctx.beginPath();ctx.ellipse(CENTER,FLOOR,105,22,0,0,Math.PI*2);ctx.stroke();ctx.setLineDash([]);
+ text('← FUORICAMPO +1',110,320,'#b3bd91',10,'center');text('FUORICAMPO +1 →',850,320,'#b3bd91',10,'center');
+ for(const e of game.enemies)drawEnemy(e);
+ ctx.globalAlpha=game.invulnerable>0&&Math.floor(time/5)%2?.35:1;drawPriest();ctx.globalAlpha=1;
+ text(priest.facing<0?'◀ COLPISCI A SINISTRA':'COLPISCI A DESTRA ▶',CENTER,490,'#dced97',11,'center');
+ for(const p of particles){ctx.globalAlpha=Math.min(1,p.life/20);rect(p.x,p.y,3,3,p.color)}ctx.globalAlpha=1;
+ for(const p of labels)text(p.label,Math.max(150,Math.min(810,p.x)),p.y,'#efce85',12,'center');
+ if(flash){ctx.fillStyle='#e26b5428';ctx.fillRect(0,0,W,H)}
+ const v=ctx.createRadialGradient(480,300,170,480,280,580);v.addColorStop(0,'#0000');v.addColorStop(1,'#07130e66');ctx.fillStyle=v;ctx.fillRect(0,0,W,H);
+ ctx.globalAlpha=.045;for(let y=0;y<H;y+=3)rect(0,y,W,1,'#000');ctx.globalAlpha=1;ctx.restore();
 }
-function drawAim(){
- if(!aiming||!started||world.won)return;
- if(!canStrike(world,priest.x,priest.facing,priest.y)){text('AVVICINATI ALLO SCHELETRO PER MIRARE',WORLD_WIDTH/2,-130,'#e4c58c',10,'center');return}
- const power=charging?charge:.5;
- const bodyKey=Object.values(world.parts).map(b=>`${Math.round(b.position.x)},${Math.round(b.position.y)},${b.angle.toFixed(1)}`).join(';');
- const key=`${bodyKey}/${priest.facing}/${power.toFixed(2)}/${Math.round(aimAngle)}`;
- if(!preview || (key!==previewKey && time%6===0)){preview=predictTrajectory(world,priest.facing,power,aimAngle);previewKey=key}
- const points=preview.points;
- ctx.strokeStyle='#dced9780';ctx.lineWidth=1.5;ctx.setLineDash([4,7]);ctx.beginPath();points.forEach((p,i)=>i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y));ctx.stroke();ctx.setLineDash([]);
- for(let i=0;i<points.length;i+=3)rect(points[i].x-1,points[i].y-1,3,3,'#dced97');
-
- text(`${Math.round(aimAngle)}°  /  POTENZA ${Math.round(power*100)}%${charging?'':' · TIENI A PER VARIARE'}`,WORLD_WIDTH/2,-130,'#dced97',10,'center');
-}
-function update(){
- time++;
- if(started&&!world.won){
-  if(aiming){const change=(keys.has('ArrowUp')?1:0)-(keys.has('ArrowDown')?1:0);aimAngle=Math.max(MIN_ANGLE,Math.min(MAX_ANGLE,aimAngle+change*.75));$('#aim-readout').textContent=`${Math.round(aimAngle)}°`}
-  const axis=(keys.has('ArrowRight')?1:0)-(keys.has('ArrowLeft')?1:0);
-  movePriest(priest,axis,charging,level.platforms);
-  if(swing===16)impact();
-  if(charging)charge=Math.min(1,charge+1/75);
-  const beforeSeals=world.sealsCollected;
-  stepWorld(world);
-  if(world.sealsCollected!==beforeSeals){refreshHUD();tone(440,.2);$('#status').textContent=world.sealsCollected===level.seals.length?'Sigilli sciolti! Ora porta lo scheletro al portale.':`Sigillo ${world.sealsCollected} sciolto. Cerca il prossimo numero.`;}
-  if(world.hit&&time%3===0){trail.push({...world.parts.chest.position,life:25});if(time%6===0&&world.parts.chest.speed>4)burst(world.parts.chest.position.x,world.parts.chest.position.y,1,'#a9b884')}
-  if(world.won){
-   charging=false;charge=0;keys.clear();completeLevel(campaign,strokes);
-   burst(level.portal.x,level.portal.y,75,palette.orange);tone(600,.7,'triangle');
-   $('#victory').hidden=false;$('#next').hidden=campaign.finished;
-   $('#victory .eyebrow').textContent=campaign.finished?'10 ANIME SU 10 · MISSIONE COMPIUTA':`ANIMA ${campaign.index+1} / 10 CONSEGNATA`;
-   $('#victory h2').textContent=campaign.finished?'La parrocchia è salva.':'Riposa in pezzi.';
-   $('#result').textContent=campaign.finished?`Hai completato tutti i 10 livelli in ${campaign.scores.reduce((a,b)=>a+b,0)} colpi. Anche Re Calcagno è all’inferno. Fine.`:`${level.skeleton.name}: ${strokes===1?'un colpo':strokes+' colpi'}. La prossima anima ti aspetta.`;
-   $('#again').textContent=campaign.finished?'TORNA AL MENU':'RIPROVA IL LIVELLO';
-   $('#status').textContent=campaign.finished?'Fine del gioco. Tutte le anime sono state consegnate.':`${level.skeleton.name} è all’inferno. Prosegui al prossimo livello.`;
-   refreshHUD();
-  }
- }
- if(started&&swing>0)swing--;
- shake*=.82;if(flash>0)flash--;
- particles.forEach(p=>{p.x+=p.vx;p.y+=p.vy;p.vy+=.15;p.life--});particles=particles.filter(p=>p.life>0);trail.forEach(p=>p.life--);trail=trail.filter(p=>p.life>0);
-}
-function draw(){ctx.save();if(shake>.2)ctx.translate((Math.random()-.5)*shake,(Math.random()-.5)*shake);background();ctx.save();ctx.translate(0,147);ctx.scale(2/3,2/3);
- rect(0,FLOOR,WORLD_WIDTH,150,'#20291f');rect(0,FLOOR,WORLD_WIDTH,5,'#788151');
- drawPlatforms();portal();drawSeals();drawAim();for(const p of trail){ctx.globalAlpha=p.life/100;rect(p.x-2,p.y-2,4,4,palette.lime)}ctx.globalAlpha=1;if(!world.won)drawSkeleton();drawPriest();for(const p of particles){ctx.globalAlpha=Math.min(1,p.life/20);rect(p.x,p.y,3,3,p.color)}ctx.globalAlpha=1;ctx.restore();if(flash){ctx.fillStyle='#edecad18';ctx.fillRect(0,0,W,H)}
- // Vignette with crisp scanlines for a quiet CRT feel.
- const v=ctx.createRadialGradient(480,300,170,480,280,580);v.addColorStop(0,'#0000');v.addColorStop(1,'#07130e66');ctx.fillStyle=v;ctx.fillRect(0,0,W,H);ctx.globalAlpha=.045;for(let y=0;y<H;y+=3)rect(0,y,W,1,'#000');ctx.globalAlpha=1;ctx.restore()}
-let previous=performance.now(),accumulator=0;function frame(now){accumulator+=Math.min(now-previous,100);previous=now;while(accumulator>=1000/60){update();accumulator-=1000/60}draw();requestAnimationFrame(frame)}requestAnimationFrame(frame);
+refreshHUD();let previous=performance.now(),accumulator=0;
+function frame(now){accumulator+=Math.min(now-previous,100);previous=now;while(accumulator>=1000/60){update();accumulator-=1000/60}draw();requestAnimationFrame(frame)}requestAnimationFrame(frame);

@@ -1,25 +1,16 @@
 <!doctype html>
-<html lang="it">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#141613" />
-    <meta name="description" content="Father McKenzie: un piccolo gioco di golf, baseball e pessime intenzioni. Spedisci uno scheletro all'inferno." />
-    <title>Father McKenzie — Unholy in one</title>
-    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
-  </head>
-  <body>
-    <div class="site-shell">
-      <header class="masthead"><a class="brand" href="/" aria-label="Father McKenzie home"><span class="brand-mark">✝</span> FATHER McKENZIE</a><div class="edition"><i></i> PROTOTIPO GIOCABILE <span>VOL. 001</span></div><button id="sound" class="sound" aria-label="Attiva audio" aria-pressed="false">AUDIO <span>OFF</span></button></header>
-      <main>
-        <section class="intro"><div><p class="eyebrow">UN PO’ GOLF. UN PO’ BASEBALL. MOLTO POCO SACRO.</p><h1>Unholy in <em>one.</em></h1></div><p class="intro-note">Una mazza. Uno scheletro.<br>La retta via porta <span>dritto all’inferno.</span></p></section>
-        <section class="game-frame" aria-label="Gioco Father McKenzie">
-          <div class="game-toolbar"><div><span class="level-dot"></span><span id="level-title"></span></div><span class="par">SIGILLI <b id="seals">0/2</b> <span class="divider">/</span> COLPI <b id="strokes">00</b></span></div>
-          <div class="viewport"><canvas id="game" width="960" height="540" tabindex="0" aria-label="Muovi il prete con le frecce. Tieni premuto A e rilascia per colpire lo scheletro verso il portale. Spazio mostra la traiettoria, freccia su o giù regola l’angolo. S salta. R ricomincia."></canvas><div id="welcome" class="welcome"><span class="mini-cross">✝</span><p>IL SIGNORE PERDONA.</p><h2>Tu prendi la mira.</h2><p class="welcome-copy">Dieci peccatori. Dieci enigmi.<br>Attraversa i sigilli numerati in ordine con lo scheletro, poi raggiungi il portale.<br><kbd>SPAZIO</kbd> mira · <kbd>↑</kbd> <kbd>↓</kbd> angolo · <kbd>A</kbd> carica e colpisci · <kbd>S</kbd> salta</p><div class="menu-actions"><button id="play" class="primary">NUOVA PARTITA <span>→</span></button><button id="resume" class="secondary" hidden>CONTINUA</button></div><div id="route-list" class="route-list"></div><small>10 LIVELLI · 10 ANIME · UNA SOLA ASSOLUZIONE</small></div><div id="victory" class="victory" hidden><p class="eyebrow">ANIMA CONSEGNATA</p><h2>Riposa in pezzi.</h2><p id="result"></p><div class="menu-actions"><button id="next" class="primary">PROSSIMO LIVELLO →</button><button id="again" class="secondary">RIPROVA IL LIVELLO</button></div></div><div id="aim-panel" hidden>ANGOLO <b id="aim-readout">35°</b> <span>↑ / ↓</span></div><div class="scene-label">CIMITERO DI SAN NESSUNO <span>— 23:06</span></div></div>
-          <div class="game-bottom"><span><i class="live-dot"></i><span id="status" role="status">La tua parrocchia ti aspetta.</span></span><div class="bottom-actions"><span id="target-name"></span><button id="menu">MENU</button><button id="reset">↻ <span>RICOMINCIA</span> <kbd>R</kbd></button></div></div>
-        </section>
-        <p id="puzzle-hint" role="status" style="color:#dced97;text-align:center;padding:0 16px"></p><section class="instructions"><div class="instruction"><span class="instruction-number">01</span><div><h3>Avvicinati al peccatore.</h3><p><kbd>←</kbd> <kbd>→</kbd> muovi <span>·</span> <kbd>S</kbd> salta</p></div></div><div class="instruction"><span class="instruction-number">02</span><div><h3>Carica la benedizione.</h3><p>Tieni <kbd>A</kbd> · rilascia per colpire</p></div></div><div class="instruction"><span class="instruction-number">03</span><div><h3>Scegli la traiettoria.</h3><p><kbd>SPAZIO</kbd> arco iniziale · <kbd>↑</kbd> <kbd>↓</kbd> inclina</p></div></div></section>
-      </main><footer><span>FATTO DI PIXEL E CATTIVE INTENZIONI.</span><span>FISICA RAGDOLL <b>✦</b> NESSUNO SCHELETRO È AL SICURO</span><span>© FATHER McKENZIE</span></footer>
-    </div><script type="module" src="/src/main.js"></script>
-  </body>
-</html>
+<html lang="it"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="theme-color" content="#141613"><meta name="description" content="Father McKenzie: assedio infinito in pixel art. Un fuoricampo vale un punto. Un’esplosione vale solo il disturbo."><title>Father McKenzie — La messa è infinita</title><link rel="icon" href="/favicon.svg"></head>
+<body><div class="site-shell">
+<header class="masthead"><a class="brand" href="/"><span class="brand-mark">✝</span> FATHER McKENZIE</a><div class="edition"><i></i> ASSEDIO INFINITO</div><button id="sound" class="sound" aria-label="Audio" aria-pressed="false">AUDIO <span>OFF</span></button></header>
+<main><section class="intro"><div><p class="eyebrow">IL GREGGE È TORNATO. E HA FAME.</p><h1>La messa è <em>infinita.</em></h1></div><p class="intro-note">Ama il prossimo.<br>Preferibilmente <span>fuori campo.</span></p></section>
+<section class="game-frame" aria-label="Arena di sopravvivenza">
+<div class="game-toolbar"><span id="wave">ORDA 1 · 0s</span><span class="par">VITA <b id="lives">✝✝✝✝✝</b> / PUNTI <b id="score">00</b></span></div>
+<div class="viewport"><canvas id="game" width="960" height="540" tabindex="0" aria-label="Il prete resta al centro. Frecce sinistra e destra per girarti. Tieni A o Spazio e rilascia per colpire. Potenza massima: esplosione, zero punti."></canvas>
+<div id="welcome" class="welcome"><span class="mini-cross">✝</span><p>RIPOSO ETERNO? MAGARI.</p><h2>Difendi la parrocchia.</h2><p class="welcome-copy">Scheletri, poi zombie, infine mostri. Arrivano dai due lati, sempre di più.<br>Girati con <kbd>←</kbd> <kbd>→</kbd>. Tieni <kbd>A</kbd> o <kbd>SPAZIO</kbd>, rilascia per colpire.<br>Colpo debole: respinge. Medio/forte: fuoricampo <b>+1</b>.<br>Potenza al 100%: esplosione <b>0 punti</b>. Hai cinque vite.</p><div class="menu-actions"><button id="play" class="primary">COMINCIA LA MESSA →</button><button id="resume" class="secondary" hidden>CONTINUA</button></div><small>NESSUN ULTIMO LIVELLO. NESSUN RIPOSO DOMENICALE.</small></div>
+<div id="victory" class="victory" hidden><p class="eyebrow">ESTREMA UNZIONE COMPLETATA</p><h2>Ora riposa tu.</h2><p id="result"></p><button id="again" class="primary">RISORGI E RIPROVA →</button></div>
+<div class="scene-label">CIMITERO DI SAN NESSUNO · TURNO DI NOTTE</div></div>
+<div class="power-strip"><span id="power-label"></span><div class="power-track"><div id="power-fill"></div><i style="left:35%"></i><i style="left:50%"></i><i style="left:65%"></i></div><small>35% scheletri · 50% zombie · 65% mostri · 100% esplosione, 0 punti</small></div>
+<div class="game-bottom"><span id="status" role="status">La parrocchia cerca personale. Anche non vivo.</span><div class="bottom-actions"><span>RECORD <b id="best">0</b> · ESPLOSI <b id="explosions">0</b></span><button id="menu">MENU</button><button id="reset">↻ RICOMINCIA</button></div></div>
+</section><div class="arena-controls"><button id="left" class="secondary">← SINISTRA</button><button id="bat" class="primary">TIENI PER CARICARE</button><button id="right" class="secondary">DESTRA →</button></div>
+<section class="instructions"><div class="instruction"><span class="instruction-number">01</span><div><h3>Scheletri · dal principio</h3><p>Veloci e leggeri. Basta il 35% per spedirli fuori.</p></div></div><div class="instruction"><span class="instruction-number">02</span><div><h3>Zombie · dopo 20 secondi</h3><p>Barcollano, resistono. Serve almeno il 50%.</p></div></div><div class="instruction"><span class="instruction-number">03</span><div><h3>Mostri · dopo 45 secondi</h3><p>Avvisano, poi scattano. Carica almeno il 65%.</p></div></div></section>
+</main><footer><span>FATTO DI PIXEL E CATTIVE INTENZIONI.</span><span>FUORICAMPO +1 · POLVERE +0</span><span>© FATHER McKENZIE</span></footer></div><script type="module" src="/src/main.js"></script></body></html>
