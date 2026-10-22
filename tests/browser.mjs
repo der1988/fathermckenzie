@@ -6,7 +6,7 @@ page.on('pageerror',e=>errors.push(e.message));
 try{
  await page.goto(process.env.TEST_URL||'http://127.0.0.1:5173');
  await page.click('#play');await page.keyboard.press('ArrowLeft');
- await page.keyboard.down('a');await page.waitForTimeout(1100);
+ await page.keyboard.down('a');await page.waitForTimeout(1400);
  assert.match(await page.locator('#power-label').textContent(),/100%.*ESPLOSIONE/);
  await page.keyboard.up('a');await page.keyboard.press('Escape');assert.equal(await page.locator('#welcome').isVisible(),true);
  await page.click('#resume');assert.equal(await page.locator('#welcome').isVisible(),false);

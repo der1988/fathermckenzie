@@ -1,12 +1,14 @@
 export const FLOOR=442, WIDTH=960, CENTER=480;
 export const PLAYER_MIN=WIDTH/3, PLAYER_MAX=WIDTH*2/3, EXPLOSION_POWER=.9;
+export const SWEET_MIN=.68, SWEET_MAX=.8, CHARGE_SECONDS=1.25;
+export const isSweetSpot=power=>power>=SWEET_MIN&&power<=SWEET_MAX;
 export function movePlayer(game,axis,dt=1/60){
  if(!game.over)game.playerX=Math.max(PLAYER_MIN,Math.min(PLAYER_MAX,game.playerX+Math.sign(axis)*150*dt));
 }
 export const TYPES={
- skeleton:{name:'Scheletro',speed:48,threshold:.35,recovery:.65,color:'#ddd8bc'},
- zombie:{name:'Zombie',speed:30,threshold:.5,recovery:1.4,color:'#91a579'},
- monster:{name:'Mostro',speed:38,threshold:.65,recovery:.35,color:'#bd837b'},
+ skeleton:{name:'Scheletro',speed:48,recovery:.65,color:'#ddd8bc'},
+ zombie:{name:'Zombie',speed:30,recovery:1.4,color:'#91a579'},
+ monster:{name:'Mostro',speed:38,recovery:.35,color:'#bd837b'},
 };
 export function createArena(){return {playerX:CENTER,enemies:[],elapsed:0,spawnIn:1,nextId:0,score:0,explosions:0,lives:5,invulnerable:0,over:false,events:[]};}
 export function spawnEnemy(game,type,side){
@@ -20,8 +22,8 @@ export function hitEnemy(game,facing,power){
  if(!enemy)return null;
  const config=TYPES[enemy.type];
  if(power>=EXPLOSION_POWER){enemy.state='dead';game.explosions++;game.events.push({type:'explode',x:enemy.x,y:enemy.y-25,color:config.color});return 'explode';}
- if(power>=config.threshold){enemy.state='flight';enemy.vx=facing*(650+power*350);enemy.vy=-230-power*150;game.events.push({type:'launch',x:enemy.x,y:enemy.y-25});return 'launch';}
- enemy.state='stunned';enemy.vx=facing*(110+power*260);enemy.vy=-65;enemy.stun=config.recovery;game.events.push({type:'push',x:enemy.x,y:enemy.y-25});return 'push';
+ if(isSweetSpot(power)){enemy.state='flight';enemy.vx=facing*(650+power*350);enemy.vy=-230-power*150;game.events.push({type:'launch',enemyType:enemy.type,x:enemy.x,y:enemy.y-25});return 'launch';}
+ enemy.state='stunned';enemy.vx=facing*(110+power*260);enemy.vy=-65;enemy.stun=config.recovery;game.events.push({type:'push',enemyType:enemy.type,x:enemy.x,y:enemy.y-25});return 'push';
 }
 export function stepArena(game,dt=1/60,rng=Math.random){
  if(game.over)return;

@@ -3,12 +3,14 @@ import '@fontsource/dm-sans/400.css';
 import '@fontsource/dm-sans/500.css';
 import '@fontsource/dm-sans/700.css';
 import './style.css';
-import {createArena,stepArena,hitEnemy,TYPES,FLOOR,CENTER,PLAYER_MIN,PLAYER_MAX,EXPLOSION_POWER,movePlayer} from './arena.js';
+import {createArena,stepArena,hitEnemy,TYPES,FLOOR,CENTER,PLAYER_MIN,PLAYER_MAX,EXPLOSION_POWER,SWEET_MIN,SWEET_MAX,CHARGE_SECONDS,isSweetSpot,movePlayer} from './arena.js';
+import {createAudio} from './audio.js';
+const sound=createAudio();
 const canvas=document.querySelector('#game'),ctx=canvas.getContext('2d'),$=s=>document.querySelector(s);
 const W=960,H=540,CHARACTER_SCALE=1;
 const palette={lime:'#dced97',orange:'#ef934e'};
 let game=createArena(),started=false,hasRun=false,charge=0,charging=false,swing=0,swingPower=0,swingStart=0,swingFacing=1;
-let shake=0,flash=0,time=0,particles=[],labels=[],soundEnabled=false,audio;
+let shake=0,flash=0,time=0,particles=[],labels=[],soundEnabled=true;
 let priest={x:CENTER,y:FLOOR,facing:1,walking:false,grounded:true,gait:0,landing:0,vy:0};
 const moveKeys=new Set();
 let best=0;try{best=Number(localStorage.getItem('father-arena-best'))||0}catch{}
@@ -16,19 +18,22 @@ function refreshHUD(){
  $('#score').textContent=String(game.score).padStart(2,'0');$('#lives').textContent='✝'.repeat(Math.max(0,game.lives));
  $('#wave').textContent=`ORDA ${1+Math.floor(game.elapsed/20)} · ${Math.floor(game.elapsed)}s`;
  $('#best').textContent=best;$('#explosions').textContent=game.explosions;
+ $('#power-cursor').style.left=`${charge*100}%`;
+ $('#sweet-zone').style.left=`${SWEET_MIN*100}%`;$('#sweet-zone').style.width=`${(SWEET_MAX-SWEET_MIN)*100}%`;
+ $('#power-track').classList.toggle('on-target',charging&&isSweetSpot(charge));
  $('#power-fill').style.width=`${charge*100}%`;$('#power-fill').style.background=charge>=EXPLOSION_POWER?'#df7264':'#dced97';
- $('#power-label').textContent=charging?`${Math.round(charge*100)}% · ${charge>=EXPLOSION_POWER?'ESPLOSIONE · 0 PUNTI':charge>=.65?'FUORICAMPO PER TUTTI':charge>=.5?'FUORICAMPO SCHELETRI / ZOMBIE':charge>=.35?'FUORICAMPO SCHELETRI':'RESPINTA'}`:'TIENI A O SPAZIO · RILASCIA PER COLPIRE';
+ $('#power-label').textContent=charging?`${Math.round(charge*100)}% · ${charge>=EXPLOSION_POWER?'ESPLOSIONE · 0 PUNTI':isSweetSpot(charge)?'RILASCIA! · FUORICAMPO +1':charge>SWEET_MAX?'TROPPO FORTE · RESPINTA':'RESPINTA · CERCA LA LUCE'}`:'TIENI A O SPAZIO · RILASCIA PER COLPIRE';
 }
 function cancelCharge(){charging=false;charge=0;chargeKey=null;}
-function start(){game=createArena();started=true;hasRun=true;cancelCharge();swing=0;particles=[];labels=[];priest.facing=1;priest.x=CENTER;priest.walking=false;moveKeys.clear();$('#welcome').hidden=true;$('#victory').hidden=true;$('#status').textContent='La messa è finita. L’assedio no.';refreshHUD();canvas.focus({preventScroll:true});}
-function openMenu(){started=false;moveKeys.clear();priest.walking=false;cancelCharge();$('#welcome').hidden=false;$('#victory').hidden=true;$('#resume').hidden=!hasRun||game.over;refreshHUD();}
-function resume(){if(!hasRun||game.over)return;started=true;$('#welcome').hidden=true;canvas.focus({preventScroll:true});}
+function start(){sound.unlock();sound.setPlaying(true);game=createArena();started=true;hasRun=true;cancelCharge();swing=0;particles=[];labels=[];priest.facing=1;priest.x=CENTER;priest.walking=false;moveKeys.clear();$('#welcome').hidden=true;$('#victory').hidden=true;$('#status').textContent='La messa è finita. L’assedio no.';refreshHUD();canvas.focus({preventScroll:true});}
+function openMenu(){sound.setPlaying(false);started=false;moveKeys.clear();priest.walking=false;cancelCharge();$('#welcome').hidden=false;$('#victory').hidden=true;$('#resume').hidden=!hasRun||game.over;refreshHUD();}
+function resume(){if(!hasRun||game.over)return;sound.unlock();sound.setPlaying(true);started=true;$('#welcome').hidden=true;canvas.focus({preventScroll:true});}
 $('#play').onclick=start;$('#again').onclick=start;$('#resume').onclick=resume;$('#menu').onclick=openMenu;$('#reset').onclick=start;
-$('#sound').onclick=()=>{soundEnabled=!soundEnabled;$('#sound span').textContent=soundEnabled?'ON':'OFF';$('#sound').setAttribute('aria-pressed',String(soundEnabled));tone(400)};
+$('#sound').onclick=()=>{soundEnabled=!soundEnabled;sound.setEnabled(soundEnabled);sound.setPlaying(started);$('#sound span').textContent=soundEnabled?'ON':'OFF';$('#sound').setAttribute('aria-pressed',String(soundEnabled));$('#sound').setAttribute('aria-label',soundEnabled?'Disattiva musica ed effetti':'Attiva musica ed effetti')};
 function backswingAngle(power){return -.45-2*Math.min(1,power/.25)-.3*power;}
 let chargeKey=null;
 function beginCharge(key){if(!started||game.over||swing>0||charging)return;chargeKey=key;charging=true;charge=0;}
-function release(){if(!charging)return;charging=false;chargeKey=null;swing=24;swingPower=charge;swingFacing=priest.facing;swingStart=backswingAngle(charge);charge=0;}
+function release(){if(!charging)return;charging=false;chargeKey=null;sound.effect('swing');swing=24;swingPower=charge;swingFacing=priest.facing;swingStart=backswingAngle(charge);charge=0;}
 function turn(direction){if(swing===0)priest.facing=direction;}
 window.addEventListener('keydown',e=>{
  const controls=['ArrowLeft','ArrowRight','KeyA','Space'];
@@ -56,18 +61,18 @@ function update(){
  if(started&&!game.over){
   const axis=(moveKeys.has('right-key')||moveKeys.has('right-touch')?1:0)-(moveKeys.has('left-key')||moveKeys.has('left-touch')?1:0);
   const oldX=game.playerX;movePlayer(game,axis);priest.x=game.playerX;priest.walking=oldX!==priest.x;if(priest.walking)priest.gait+=.24;if(axis)turn(axis);
-  time++;if(charging)charge=Math.min(1,charge+1/60);
-  if(swing===16){const hit=hitEnemy(game,swingFacing,swingPower);if(!hit){$('#status').textContent='Aria benedetta. Aspetta che siano a portata.';tone(80,.08)}}
+  time++;if(charging){const before=charge;charge=Math.min(1,charge+1/(60*CHARGE_SECONDS));if(before<SWEET_MIN&&charge>=SWEET_MIN)sound.effect('ready');}
+  if(swing===16){const hit=hitEnemy(game,swingFacing,swingPower);if(!hit){$('#status').textContent='Aria benedetta. Aspetta che siano a portata.';sound.effect('push')}}
   if(swing>0)swing--;
   stepArena(game);
   for(const event of game.events){
-   if(event.type==='explode'){burst(event.x,event.y,45,event.color);labels.push({...event,label:'POLVERE ALLA POLVERE · +0',life:80});shake=8;tone(75,.25,'sawtooth');$('#status').textContent='Cremazione istantanea. Punti: zero. Fattura: salata.';}
-   if(event.type==='score'){labels.push({...event,label:'FUORICAMPO +1',life:90});tone(550,.2);$('#status').textContent='Un’anima fuori parrocchia. +1';}
-   if(event.type==='launch'||event.type==='push'){burst(event.x,event.y,8,palette.lime);shake=3;tone(145,.15,'triangle');}
-   if(event.type==='hurt'){shake=10;flash=7;tone(65,.3,'sawtooth');$('#status').textContent='Il gregge morde. Gira la mazza dall’altra parte!';}
+   if(event.type==='explode'){burst(event.x,event.y,45,event.color);labels.push({...event,label:'POLVERE ALLA POLVERE · +0',life:80});shake=8;sound.effect('explode');$('#status').textContent='Cremazione istantanea. Punti: zero. Fattura: salata.';}
+   if(event.type==='score'){labels.push({...event,label:'FUORICAMPO +1',life:90});sound.effect('score');$('#status').textContent='Un’anima fuori parrocchia. +1';}
+   if(event.type==='launch'||event.type==='push'){burst(event.x,event.y,8,palette.lime);shake=3;sound.effect(event.type,event.enemyType);}
+   if(event.type==='hurt'){shake=10;flash=7;sound.effect('hurt');$('#status').textContent='Il gregge morde. Gira la mazza dall’altra parte!';}
   }game.events=[];
   if(game.score>best){best=game.score;try{localStorage.setItem('father-arena-best',String(best))}catch{}}
-  if(game.over){started=false;cancelCharge();$('#victory').hidden=false;$('#result').textContent=`${game.score} fuoricampo · ${game.explosions} esplosioni senza punti · ${Math.floor(game.elapsed)} secondi sopravvissuti.`;}
+  if(game.over){sound.setPlaying(false);sound.effect('death');started=false;cancelCharge();$('#victory').hidden=false;$('#result').textContent=`${game.score} fuoricampo · ${game.explosions} esplosioni senza punti · ${Math.floor(game.elapsed)} secondi sopravvissuti.`;}
   refreshHUD();
  }
  if(started||game.over){particles.forEach(p=>{p.x+=p.vx;p.y+=p.vy;p.vy+=.15;p.life--});particles=particles.filter(p=>p.life>0);labels.forEach(p=>{p.y-=.35;p.life--});labels=labels.filter(p=>p.life>0);shake*=.82;if(flash>0)flash--;}
@@ -76,7 +81,7 @@ function rect(x,y,w,h,color){ctx.fillStyle=color;ctx.fillRect(Math.round(x),Math
 function text(str,x,y,color='#c7d0ad',size=10,align='left'){ctx.fillStyle=color;ctx.font=`bold ${size}px monospace`;ctx.textAlign=align;ctx.fillText(str,Math.round(x),Math.round(y));ctx.textAlign='left'}
 function line(points,color,width=1){ctx.strokeStyle=color;ctx.lineWidth=width;ctx.beginPath();points.forEach(([x,y],i)=>i?ctx.lineTo(Math.round(x),Math.round(y)):ctx.moveTo(Math.round(x),Math.round(y)));ctx.stroke()}
 function noise(n){const x=Math.sin(n*127.1+311.7)*43758.5453;return x-Math.floor(x)}
-function tone(freq,duration=.12,type='triangle',gain=.045){if(!soundEnabled)return;audio??=new AudioContext();audio.resume();const o=audio.createOscillator(),g=audio.createGain();o.type=type;o.frequency.setValueAtTime(freq,audio.currentTime);o.frequency.exponentialRampToValueAtTime(Math.max(35,freq/3),audio.currentTime+duration);g.gain.setValueAtTime(gain,audio.currentTime);g.gain.exponentialRampToValueAtTime(.001,audio.currentTime+duration);o.connect(g).connect(audio.destination);o.start();o.stop(audio.currentTime+duration)}
+
 function burst(x,y,n,color){for(let i=0;i<n;i++)particles.push({x,y,vx:(Math.random()-.5)*8,vy:-Math.random()*6,life:30+Math.random()*25,color})}
 function background(){
  rect(0,0,W,H,'#202e2b');
@@ -153,7 +158,13 @@ function drawPriest(){
  ctx.restore();
  if(swing>0&&progress>.2&&progress<.48){ctx.strokeStyle='#e4dda580';ctx.lineWidth=3;ctx.beginPath();ctx.arc(6,-37,51,batAngle-.55,batAngle);ctx.stroke()}
  ctx.restore();ctx.restore();
- if(charging){rect(x-23,y-66,46,7,'#19221b');rect(x-21,y-64,Math.round(42*charge),3,charge>=EXPLOSION_POWER?'#ed6660':charge>=.35?'#dced97':'#a0b6bb');text(`${Math.round(charge*100)}%`,x,y-72,palette.lime,8,'center')}
+ if(charging){
+  rect(x-42,y-77,84,10,'#19221b');rect(x-40,y-75,80*charge,6,charge>=EXPLOSION_POWER?'#ed6660':'#708568');
+  ctx.save();ctx.shadowColor='#f9e49c';ctx.shadowBlur=10;
+  rect(x-40+80*SWEET_MIN,y-75,80*(SWEET_MAX-SWEET_MIN),6,'#f9e49c');ctx.restore();
+  rect(x-41+80*charge,y-79,2,14,'#ffffff');
+  text(isSweetSpot(charge)?'RILASCIA!':`${Math.round(charge*100)}%`,x,y-85,isSweetSpot(charge)?'#fff1aa':palette.lime,9,'center');
+ }
  if(started)text('PADRE McKENZIE',x,y+19,'#c4cda6',7,'center');
 }
 function drawEnemy(e){
@@ -189,4 +200,4 @@ function draw(){
  ctx.globalAlpha=.045;for(let y=0;y<H;y+=3)rect(0,y,W,1,'#000');ctx.globalAlpha=1;ctx.restore();
 }
 refreshHUD();let previous=performance.now(),accumulator=0;
-function frame(now){accumulator+=Math.min(now-previous,100);previous=now;while(accumulator>=1000/60){update();accumulator-=1000/60}draw();requestAnimationFrame(frame)}requestAnimationFrame(frame);
+function frame(now){sound.update();accumulator+=Math.min(now-previous,100);previous=now;while(accumulator>=1000/60){update();accumulator-=1000/60}draw();requestAnimationFrame(frame)}requestAnimationFrame(frame);
