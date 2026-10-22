@@ -3,7 +3,7 @@ import '@fontsource/dm-sans/400.css';
 import '@fontsource/dm-sans/500.css';
 import '@fontsource/dm-sans/700.css';
 import './style.css';
-import { LEVELS, CHARACTER_SCALE, createPriest, movePriest, jump } from './level.js';
+import { LEVELS, WORLD_WIDTH, CHARACTER_SCALE, createPriest, movePriest, jump } from './level.js';
 import { createCampaign, completeLevel, nextLevel } from './campaign.js';
 import { createWorld, strike, stepWorld, clearWorld, FLOOR, predictTrajectory, canStrike, DEFAULT_ANGLE, MIN_ANGLE, MAX_ANGLE } from './physics.js';
 const canvas = document.querySelector('#game');
@@ -27,6 +27,8 @@ function burst(x,y,n,color){for(let i=0;i<n;i++)particles.push({x,y,vx:(Math.ran
 function refreshHUD(){
  $('#level-title').textContent=`${String(campaign.index+1).padStart(2,'0')} / 10 — ${level.title.toUpperCase()}`;
  $('#target-name').textContent=level.skeleton.name;
+ $('#puzzle-hint').textContent=level.hint;
+ $('#seals').textContent=`${world.sealsCollected}/${level.seals.length}`;
  $('.scene-label').textContent=`${level.title.toUpperCase()} — ANIMA ${campaign.index+1} DI 10`;
  $('#aim-readout').textContent=`${Math.round(aimAngle)}°`;
  $('#aim-panel').hidden=!aiming || !started || world.won;
@@ -102,11 +104,11 @@ function background(){
  for(let i=0;i<170;i++){let x=noise(i+501)*960,y=461+noise(i+907)*78;rect(x,y,3+Math.floor(noise(i)*7),2,i%3?'#34402b':'#404831')}
  for(let i=0;i<130;i++){let x=noise(i+60)*960;rect(x,437-noise(i+350)*7,2,7+noise(i+350)*7,i%3?'#69784a':'#87915b')}
  line([[0,488],[120,488],[147,507],[319,507],[339,492],[448,492]],'#3a422b',2);line([[592,480],[702,480],[729,500],[960,500]],'#3a422b',2);
- // Starting cross and distance markers.
- const sx=level.start.x-40,sy=level.start.y;rect(sx,sy-53,4,50,'#8c9970');rect(sx-10,sy-42,24,4,'#8c9970');rect(sx+2,sy-52,34,16,'#cbd496');text('START',sx+5,sy-41,'#36402c',7);
- for(const [x,l] of [[390,'10 YD'],[565,'20 YD'],[740,'30 YD']]){rect(x,430,2,11,'#a6af78');text(l,x,471,'#778361',7,'center')}
+
 }
-function portal(){ctx.save();ctx.translate(0,level.portal.y-382);const x=level.portal.x,y=382;const glow=ctx.createRadialGradient(x,y,10,x,y,112);glow.addColorStop(0,'#e88e4544');glow.addColorStop(1,'#e88e4500');ctx.fillStyle=glow;ctx.fillRect(x-115,y-115,230,175);
+function portal(){
+ const locked=world.sealsCollected<level.seals.length;
+ ctx.save();if(locked)ctx.globalAlpha=.4;ctx.save();ctx.translate(0,level.portal.y-382);const x=level.portal.x,y=382;const glow=ctx.createRadialGradient(x,y,10,x,y,112);glow.addColorStop(0,'#e88e4544');glow.addColorStop(1,'#e88e4500');ctx.fillStyle=glow;ctx.fillRect(x-115,y-115,230,175);
  // Stepped stone arch.
  rect(x-35,350,9,92,'#656a50');rect(x+27,350,9,92,'#656a50');rect(x-28,332,9,23,'#77775a');rect(x+20,332,9,23,'#77775a');rect(x-20,321,40,12,'#74765a');rect(x-13,314,26,9,'#858060');
  rect(x-26,351,53,91,'#321e22');rect(x-19,333,39,105,'#3b2125');rect(x-11,328,23,110,'#3b2125');
@@ -114,7 +116,8 @@ function portal(){ctx.save();ctx.translate(0,level.portal.y-382);const x=level.p
  for(let i=0;i<18;i++){let py=436-((time*.65+i*11)%95),px=x+Math.sin(i*9+time*.04)*22;rect(px,py,2,3,i%3?'#ed9750':'#ffca71')}
  for(let i=0;i<4;i++){rect(x-35,360+i*21,9,2,'#333c2e');rect(x+27,360+i*21,9,2,'#333c2e')}
  rect(x-12,307,24,5,'#c99c5d');text('INFERNO',x,282,'#edb473',12,'center');text('SOLO ANDATA',x,295,'#ae9a6d',7,'center');
- const bob=Math.round(Math.sin(time*.07)*3);arrow(x-70+bob,379,1);arrow(x+70-bob,379,-1);ctx.save();ctx.translate(x,305+bob);ctx.rotate(Math.PI/2);arrow(0,0,1);ctx.restore();rect(x-41,438,84,5,'#858160');ctx.restore();
+ const bob=Math.round(Math.sin(time*.07)*3);arrow(x-70+bob,379,1);arrow(x+70-bob,379,-1);ctx.save();ctx.translate(x,305+bob);ctx.rotate(Math.PI/2);arrow(0,0,1);ctx.restore();rect(x-41,438,84,5,'#858160');ctx.restore();ctx.restore();
+ if(locked)text('SCIOGLI I SIGILLI',level.portal.x,level.portal.y-115,'#edb473',10,'center');
 }
 function arrow(x,y,dir){line([[x-dir*15,y],[x+dir*5,y]],'#ecc174',3);line([[x-dir*2,y-7],[x+dir*6,y],[x-dir*2,y+7]],'#ecc174',3)}
 function drawPlatforms(){
@@ -175,6 +178,8 @@ function drawSkeleton(){for(const [name,b] of Object.entries(world.parts)){ctx.s
  const head=world.parts.head.position;text(level.skeleton.name.toUpperCase(),head.x,head.y-33,level.skeleton.accent,7,'center');
 }
 function drawAccessory(){
+ if(level.skeleton.detail===1)line([[-5,-9],[-2,-7],[-4,-5]],'#878674',1);
+ if(level.skeleton.detail===2)rect(2,7,2,3,'#2b3028');
  const c=level.skeleton.accent;
  switch(level.skeleton.style){
   case 'cap':rect(-10,-13,20,5,c);rect(4,-10,11,3,c);break;
@@ -189,18 +194,29 @@ function drawAccessory(){
   case 'crown':rect(-11,-15,22,7,c);for(const x of [-11,-2,7])rect(x,-22,4,10,c);rect(-2,-14,4,4,'#db6d61');break;
  }
 }
+function drawSeals(){
+ const sx=level.start.x-40,sy=level.start.y;rect(sx,sy-53,4,50,'#8c9970');rect(sx-10,sy-42,24,4,'#8c9970');text('START',sx,sy-60,'#cbd496',9,'center');
+ for(const [i,s] of level.seals.entries()){
+  const done=i<world.sealsCollected,active=i===world.sealsCollected;
+  ctx.save();ctx.globalAlpha=done?.3:active?.85:.35;
+  ctx.strokeStyle=done?'#9bb685':active?'#f2cd76':'#a1b4bd';ctx.lineWidth=2;ctx.setLineDash([5,7]);
+  ctx.beginPath();ctx.arc(s.x,s.y,s.radius,0,Math.PI*2);ctx.stroke();ctx.setLineDash([]);
+  text(done?'✓':String(i+1),s.x,s.y-10,ctx.strokeStyle,22,'center');
+  text(done?'SCIOLTO':active?'PROSSIMO SIGILLO':'SIGILLO',s.x,s.y+10,ctx.strokeStyle,9,'center');ctx.restore();
+ }
+}
 function drawAim(){
  if(!aiming||!started||world.won)return;
- if(!canStrike(world,priest.x,priest.facing,priest.y)){text('AVVICINATI ALLO SCHELETRO PER MIRARE',480,38,'#e4c58c',10,'center');return}
+ if(!canStrike(world,priest.x,priest.facing,priest.y)){text('AVVICINATI ALLO SCHELETRO PER MIRARE',WORLD_WIDTH/2,-130,'#e4c58c',10,'center');return}
  const power=charging?charge:.5;
  const bodyKey=Object.values(world.parts).map(b=>`${Math.round(b.position.x)},${Math.round(b.position.y)},${b.angle.toFixed(1)}`).join(';');
  const key=`${bodyKey}/${priest.facing}/${power.toFixed(2)}/${Math.round(aimAngle)}`;
  if(!preview || (key!==previewKey && time%6===0)){preview=predictTrajectory(world,priest.facing,power,aimAngle);previewKey=key}
  const points=preview.points;
- ctx.strokeStyle=preview.won?'#eece79b0':'#dced9780';ctx.lineWidth=1.5;ctx.setLineDash([4,7]);ctx.beginPath();points.forEach((p,i)=>i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y));ctx.stroke();ctx.setLineDash([]);
- for(let i=0;i<points.length;i+=3)rect(points[i].x-1,points[i].y-1,3,3,preview.won?'#f5cf74':'#dced97');
- const end=points.at(-1);line([[end.x-5,end.y-5],[end.x+5,end.y+5]],'#edc277',2);line([[end.x+5,end.y-5],[end.x-5,end.y+5]],'#edc277',2);
- text(`${Math.round(aimAngle)}°  /  POTENZA ${Math.round(power*100)}%${charging?'':' · TIENI A PER VARIARE'}`,480,38,'#dced97',10,'center');
+ ctx.strokeStyle='#dced9780';ctx.lineWidth=1.5;ctx.setLineDash([4,7]);ctx.beginPath();points.forEach((p,i)=>i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y));ctx.stroke();ctx.setLineDash([]);
+ for(let i=0;i<points.length;i+=3)rect(points[i].x-1,points[i].y-1,3,3,'#dced97');
+
+ text(`${Math.round(aimAngle)}°  /  POTENZA ${Math.round(power*100)}%${charging?'':' · TIENI A PER VARIARE'}`,WORLD_WIDTH/2,-130,'#dced97',10,'center');
 }
 function update(){
  time++;
@@ -210,7 +226,9 @@ function update(){
   movePriest(priest,axis,charging,level.platforms);
   if(swing===16)impact();
   if(charging)charge=Math.min(1,charge+1/75);
+  const beforeSeals=world.sealsCollected;
   stepWorld(world);
+  if(world.sealsCollected!==beforeSeals){refreshHUD();tone(440,.2);$('#status').textContent=world.sealsCollected===level.seals.length?'Sigilli sciolti! Ora porta lo scheletro al portale.':`Sigillo ${world.sealsCollected} sciolto. Cerca il prossimo numero.`;}
   if(world.hit&&time%3===0){trail.push({...world.parts.chest.position,life:25});if(time%6===0&&world.parts.chest.speed>4)burst(world.parts.chest.position.x,world.parts.chest.position.y,1,'#a9b884')}
   if(world.won){
    charging=false;charge=0;keys.clear();completeLevel(campaign,strokes);
@@ -228,7 +246,9 @@ function update(){
  shake*=.82;if(flash>0)flash--;
  particles.forEach(p=>{p.x+=p.vx;p.y+=p.vy;p.vy+=.15;p.life--});particles=particles.filter(p=>p.life>0);trail.forEach(p=>p.life--);trail=trail.filter(p=>p.life>0);
 }
-function draw(){ctx.save();if(shake>.2)ctx.translate((Math.random()-.5)*shake,(Math.random()-.5)*shake);background();drawPlatforms();portal();drawAim();for(const p of trail){ctx.globalAlpha=p.life/100;rect(p.x-2,p.y-2,4,4,palette.lime)}ctx.globalAlpha=1;if(!world.won)drawSkeleton();drawPriest();for(const p of particles){ctx.globalAlpha=Math.min(1,p.life/20);rect(p.x,p.y,3,3,p.color)}ctx.globalAlpha=1;if(flash){ctx.fillStyle='#edecad18';ctx.fillRect(0,0,W,H)}
+function draw(){ctx.save();if(shake>.2)ctx.translate((Math.random()-.5)*shake,(Math.random()-.5)*shake);background();ctx.save();ctx.translate(0,147);ctx.scale(2/3,2/3);
+ rect(0,FLOOR,WORLD_WIDTH,150,'#20291f');rect(0,FLOOR,WORLD_WIDTH,5,'#788151');
+ drawPlatforms();portal();drawSeals();drawAim();for(const p of trail){ctx.globalAlpha=p.life/100;rect(p.x-2,p.y-2,4,4,palette.lime)}ctx.globalAlpha=1;if(!world.won)drawSkeleton();drawPriest();for(const p of particles){ctx.globalAlpha=Math.min(1,p.life/20);rect(p.x,p.y,3,3,p.color)}ctx.globalAlpha=1;ctx.restore();if(flash){ctx.fillStyle='#edecad18';ctx.fillRect(0,0,W,H)}
  // Vignette with crisp scanlines for a quiet CRT feel.
  const v=ctx.createRadialGradient(480,300,170,480,280,580);v.addColorStop(0,'#0000');v.addColorStop(1,'#07130e66');ctx.fillStyle=v;ctx.fillRect(0,0,W,H);ctx.globalAlpha=.045;for(let y=0;y<H;y+=3)rect(0,y,W,1,'#000');ctx.globalAlpha=1;ctx.restore()}
 let previous=performance.now(),accumulator=0;function frame(now){accumulator+=Math.min(now-previous,100);previous=now;while(accumulator>=1000/60){update();accumulator-=1000/60}draw();requestAnimationFrame(frame)}requestAnimationFrame(frame);

@@ -1,4 +1,5 @@
 export const FLOOR = 442;
+export const WORLD_WIDTH = 1440;
 export const CHARACTER_SCALE = 0.7;
 const ledge = (x, y, width, height = 18) => ({ x, y, width, height });
 const level = (title, name, style, accent, bone, platforms, options = {}) => ({
@@ -40,6 +41,29 @@ export const LEVELS = [
     [ledge(345,384,75),ledge(451,332,80),ledge(564,278,80),ledge(682,330,80),ledge(793,380,124)],
     {portal:{x:856,y:320},sky:'#352426'}),
 ];
+// Each route has ordered seals: overshooting or taking a shortcut leaves the portal shut.
+const routes = [
+  { hint:'Due soste: accompagna lo scheletro nei sigilli 1 e 2 prima del portale.', seals:[[580,380],[1020,380]], platforms:[ledge(350,385,110),ledge(710,340,125),ledge(1150,385,90)] },
+  { hint:'Scala le terrazze: il secondo sigillo è in alto.', seals:[[560,330],[960,270]], platforms:[ledge(350,390,100),ledge(500,345,150),ledge(690,295,115),ledge(880,285,165),ledge(1110,350,110)] },
+  { hint:'Tiri bassi sotto le volte, poi un colpo alto in uscita.', seals:[[570,395],[1000,380]], platforms:[ledge(350,295,360,28),ledge(800,270,330,28),ledge(1170,380,95)] },
+  { hint:'Parti da destra: misura la potenza e procedi verso sinistra.', seals:[[900,370],[440,330]], platforms:[ledge(1050,385,100),ledge(770,325,100),ledge(365,345,160),ledge(560,395,95)] },
+  { hint:'Supera il ponte a tappe: evita di scavalcare il primo sigillo.', seals:[[580,310],[1030,370]], platforms:[ledge(350,390,85),ledge(475,335,100),ledge(600,335,100),ledge(750,280,95),ledge(920,385,180),ledge(1170,335,120)] },
+  { hint:'Aggira le torri, raccogli i sigilli e riposizionati prima del tiro.', seals:[[580,380],[1010,325]], platforms:[ledge(350,380,80),ledge(445,320,80),ledge(580,350,80),ledge(690,280,35,162),ledge(760,380,95),ledge(890,340,90),ledge(1000,340,115),ledge(1160,390,100)] },
+  { hint:'Dal pulpito scendi al primo sigillo, poi risali la terrazza.', seals:[[600,390],[1010,300]], platforms:[ledge(100,338,210),ledge(375,390,95),ledge(730,390,110),ledge(860,335,100),ledge(990,315,140),ledge(1180,375,100)] },
+  { hint:'Prima il sigillo lontano, poi torna indietro: non basta tirare forte.', seals:[[1020,380],[570,380]], platforms:[ledge(350,385,100),ledge(710,325,140),ledge(1150,370,115)] },
+  { hint:'Il giullare inverte la strada: prima sinistra, poi destra, infine il portale.', seals:[[410,380],[930,370]], platforms:[ledge(1090,380,95),ledge(730,315,130),ledge(530,365,95),ledge(230,385,95)] },
+  { hint:'Tre sigilli in ordine: basso, alto, ritorno. Pianifica anche l’ultimo colpo.', seals:[[550,380],[1040,290],[790,380]], platforms:[ledge(350,385,100),ledge(650,335,100),ledge(870,360,110),ledge(1010,305,145),ledge(1200,375,100)] },
+];
+for (const [i,l] of LEVELS.entries()) {
+  const route=routes[i];
+  l.platforms=route.platforms; l.hint=route.hint;
+  l.seals=route.seals.map(([x,y])=>({x,y,radius:70}));
+  l.portal={x:l.facing===1?1350:90,y:382};
+  if(l.facing===-1){l.start.x=1300;l.skeleton.x=1180;}
+  // Subtle bone tones and tiny facial details, with the existing signature accessories.
+  l.skeleton.bone=['#ddd8bc','#d9d4b9','#dfd7bf','#d6d2b8','#e0d9c3','#d8d5be','#ded8bd','#d9d7bb','#e1d9bf','#e3dcc6'][i];
+  l.skeleton.detail=i%3;
+}
 // Raised portals have a physical landing under their arch.
 for (const l of LEVELS) {
   const bottom = l.portal.y + 60;
@@ -62,7 +86,7 @@ export function movePriest(priest, axis, charging, platforms = PLATFORMS) {
   const half = 9, height = 45;
   const oldX = priest.x, oldY = priest.y;
   const dx = axis * (charging ? 1.15 : 2.8);
-  priest.x = Math.max(20, Math.min(940, priest.x + dx));
+  priest.x = Math.max(20, Math.min(WORLD_WIDTH-20, priest.x + dx));
   for (const p of platforms) {
     if (oldY <= p.y + .01 || oldY - height >= p.y + p.height) continue;
     if (dx > 0 && oldX + half <= p.x && priest.x + half > p.x) priest.x = p.x - half;

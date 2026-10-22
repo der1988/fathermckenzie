@@ -2,10 +2,14 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import Matter from 'matter-js';
 import { createCampaign, completeLevel, nextLevel } from '../src/campaign.js';
-import { createPriest, movePriest, jump, PLATFORMS, FLOOR, LEVELS } from '../src/level.js';
+import { createPriest, movePriest, jump, FLOOR, LEVELS } from '../src/level.js';
 import { createWorld, strike, stepWorld, clearWorld, predictTrajectory, launchVelocity } from '../src/physics.js';
+// Stable collision fixture, independent of campaign layout changes.
+const PLATFORMS=[{x:360,y:385,width:110,height:18},{x:520,y:327,width:112,height:18},{x:681,y:378,width:93,height:18}];
+const fixture={...LEVELS[0],platforms:PLATFORMS,seals:[],portal:{x:843,y:382}};
+const move=(p,axis,charge)=>movePriest(p,axis,charge,PLATFORMS);
 test('a distant swing misses and leaves the skeleton standing', () => {
-  const w = createWorld();
+  const w = createWorld(fixture);
   assert.equal(strike(w, 100, 1, 1), false);
   for(let i=0;i<60;i++)stepWorld(w);
   assert.equal(w.hit, false);
@@ -13,7 +17,7 @@ test('a distant swing misses and leaves the skeleton standing', () => {
   clearWorld(w);
 });
 test('a measured shot sends the articulated skeleton into the portal', () => {
-  const w = createWorld();
+  const w = createWorld(fixture);
   assert.equal(strike(w, 245, 1, .35), true);
   assert.equal(Object.keys(w.parts).length, 7);
   for(let i=0;i<600&&!w.won;i++)stepWorld(w);
@@ -22,7 +26,7 @@ test('a measured shot sends the articulated skeleton into the portal', () => {
   clearWorld(w);
 });
 test('charge increases launch speed and a missed landing can be hit again', () => {
-  const weak = createWorld(), strong = createWorld();
+  const weak = createWorld(fixture), strong = createWorld(fixture);
   strike(weak,230,1,.1);strike(strong,230,1,1);
   assert.ok(strong.parts.chest.velocity.x > weak.parts.chest.velocity.x);
   for(let i=0;i<600;i++)stepWorld(weak);
@@ -36,8 +40,8 @@ test('S-style jump lands on a platform, allows another jump, and cannot double j
   p.x = 330;
   assert.equal(jump(p), true);
   assert.equal(jump(p), false);
-  for(let i=0;i<26;i++) movePriest(p,1,false);
-  for(let i=0;i<45;i++) movePriest(p,0,false);
+  for(let i=0;i<26;i++) move(p,1,false);
+  for(let i=0;i<45;i++) move(p,0,false);
   assert.equal(p.y, PLATFORMS[0].y);
   assert.equal(p.grounded, true);
   assert.equal(jump(p), true);
@@ -45,16 +49,16 @@ test('S-style jump lands on a platform, allows another jump, and cannot double j
 test('walking off a platform falls to the floor and its underside blocks a jump', () => {
   const p = createPriest();
   p.x = 440; p.y = PLATFORMS[0].y;
-  for(let i=0;i<25;i++)movePriest(p,1,false);
-  for(let i=0;i<60;i++)movePriest(p,0,false);
+  for(let i=0;i<25;i++)move(p,1,false);
+  for(let i=0;i<60;i++)move(p,0,false);
   assert.equal(p.y,FLOOR);
   p.x=560;
   jump(p);
-  for(let i=0;i<12;i++)movePriest(p,0,false);
+  for(let i=0;i<12;i++)move(p,0,false);
   assert.ok(p.y-45 >= PLATFORMS[1].y+PLATFORMS[1].height-.01);
 });
 test('the ragdoll rests on the same solid platforms used by the priest', () => {
-  const w=createWorld();
+  const w=createWorld(fixture);
   for(const body of Object.values(w.parts)) {
     Matter.Body.setStatic(body,false);
     Matter.Body.translate(body,{x:130,y:-145});
@@ -68,8 +72,8 @@ test('the ragdoll rests on the same solid platforms used by the priest', () => {
 test('the upper platform is reachable from the first ledge', () => {
   const p=createPriest();p.x=440;p.y=PLATFORMS[0].y;
   jump(p);
-  for(let i=0;i<42;i++)movePriest(p,1,false);
-  for(let i=0;i<20;i++)movePriest(p,0,false);
+  for(let i=0;i<42;i++)move(p,1,false);
+  for(let i=0;i<20;i++)move(p,0,false);
   assert.equal(p.y,PLATFORMS[1].y);
   assert.equal(p.grounded,true);
 });
@@ -85,7 +89,7 @@ test('aim elevation changes the real velocity, mirrored shots face left', () => 
   assert.equal(left.x,-high.x);assert.equal(left.y,high.y);
 });
 test('trajectory prediction matches live ragdoll physics without changing its source', () => {
-  const w=createWorld();
+  const w=createWorld(fixture);
   const before=JSON.stringify(Object.values(w.parts).map(b=>[b.position,b.angle,b.velocity]));
   const prediction=predictTrajectory(w,1,.35,35,100);
   assert.equal(JSON.stringify(Object.values(w.parts).map(b=>[b.position,b.angle,b.velocity])),before);
@@ -114,13 +118,31 @@ test('campaign progresses in order, records each score once, and ends after ten'
   assert.deepEqual(createCampaign(),{index:0,scores:[],finished:false});
 });
 
-for (const [index, level] of LEVELS.entries()) {
-  test(`level ${index+1} can be completed with its actual platforms and portal`, async () => {
-    const {SHOTS}=await import('./shots.js');
-    const shot=SHOTS[index],w=createWorld(level);
-    assert.equal(strike(w,level.skeleton.x-level.facing*38,level.facing,shot.frames/75,level.skeleton.y,35+shot.angleSteps*.75),true);
-    for(let i=0;i<360&&!w.won;i++)stepWorld(w);
-    assert.equal(w.won,true);
-    clearWorld(w);
-  });
-}
+const solutions=JSON.parse(await (await import('node:fs/promises')).readFile(new URL('./route-solutions.json',import.meta.url),'utf8'));
+for(const [index,level] of LEVELS.entries())test(`route ${index+1}: real multi-shot physics clears ordered seals and portal`,()=>{
+ const w=createWorld(level);
+ for(const shot of solutions[index]){
+  assert.equal(strike(w,shot.x,shot.facing,shot.frames/75,shot.y,shot.angle),true);
+  for(let t=0;t<360&&!w.won;t++)stepWorld(w);
+ }
+ assert.equal(w.sealsCollected,level.seals.length);
+ assert.equal(w.won,true);clearWorld(w);
+});
+test('portal stays locked, future seals cannot be collected out of order',()=>{
+ const w=createWorld();w.hit=true;
+ const place=(point)=>{for(const body of Object.values(w.parts))Matter.Body.setPosition(body,point);stepWorld(w)};
+ place(w.level.portal);assert.equal(w.won,false);
+ place(w.level.seals[1]);assert.equal(w.sealsCollected,0);
+ place(w.level.seals[0]);assert.equal(w.sealsCollected,1);
+ place(w.level.seals[1]);assert.equal(w.sealsCollected,2);
+ place(w.level.portal);assert.equal(w.won,true);clearWorld(w);
+});
+test('default aim is only the first 0.3 seconds and never mutates seal progress',()=>{
+ const w=createWorld();const p=predictTrajectory(w,1,1,35);
+ assert.equal(p.points.length,7);assert.equal(w.sealsCollected,0);assert.equal(w.hit,false);
+ assert.ok(Math.abs(p.points.at(-1).x-p.points[0].x)<400);clearWorld(w);
+});
+test('priest can traverse the extended right edge',()=>{
+ const p=createPriest();for(let i=0;i<600;i++)movePriest(p,1,false,[]);
+ assert.equal(p.x,1420);
+});

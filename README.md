@@ -1,6 +1,6 @@
 # Father McKenzie — Unholy in one
 
-Gioco browser di golf/baseball in pixel art: un prete con tunica nera, croce e mazza di legno accompagna dieci scheletri all'inferno. Una campagna di **10 livelli**, con percorsi a piattaforme, portali rialzati, livelli verso sinistra e uno scheletro diverso per ogni tappa.
+Gioco browser di golf/baseball in pixel art: un prete con tunica nera, croce e mazza di legno accompagna dieci scheletri all'inferno. Una campagna di **10 livelli**, con percorsi lunghi 1440 unità, zoom al 67%, sigilli ordinati, volte basse, terrazze e livelli con ritorni indietro e uno scheletro diverso per ogni tappa.
 
 Grafica originale in Canvas 2D, personaggi compatti animati e scheletro ragdoll formato da sette corpi fisici. Ogni peccatore ha nome, palette e accessorio propri. Le animazioni includono camminata, tunica, salto, atterraggio e carica della mazza all'indietro. Aseprite non è necessario per avviare il progetto; il prototipo non contiene asset di My Friend Pedro.
 
@@ -18,7 +18,7 @@ Browser desktop e tastiera. Nel menu scegli **Nuova partita**.
 | **R** | Ricomincia il livello corrente |
 | **Esc** oppure **Menu** | Pausa; **Continua** riprende la partita |
 
-Avvicinati allo scheletro, guardalo e premi spazio. L'arco parte dallo scheletro e simula la stessa fisica del colpo, inclusi gli urti sulle piattaforme. Senza caricare mostra un tiro al 50%; mentre tieni A, segue la potenza effettiva. Regola l'angolo con su/giù e rilascia A per colpire. L'angolo scelto resta attivo anche nascondendo l'arco. La traiettoria è una previsione: se lo scheletro si muove durante lo swing, il punto di partenza può cambiare.
+Avvicinati allo scheletro, guardalo e premi spazio. L'arco mostra solo i primi 0,3 secondi del lancio (18 aggiornamenti fisici), con la stessa fisica del colpo. Non indica l’atterraggio né se il tiro avrà successo. Senza caricare mostra un tiro al 50%; mentre tieni A, segue la potenza effettiva. Regola l'angolo con su/giù e rilascia A per colpire. L'angolo scelto resta attivo anche nascondendo l'arco. La traiettoria è una previsione: se lo scheletro si muove durante lo swing, il punto di partenza può cambiare.
 
 Un colpo sbagliato non termina la partita: salta sulle piattaforme, raggiungi lo scheletro e colpiscilo di nuovo. Il prete non attiva il portale. **Audio ON/OFF** controlla gli effetti sintetizzati.
 
@@ -36,6 +36,8 @@ Un colpo sbagliato non termina la partita: salta sulle piattaforme, raggiungi lo
 | 08 | Il giardino velenoso | Viola la Botanica, con fiori |
 | 09 | Il patto del giullare | Gigi il Giullare, con sonagli |
 | 10 | L'ultima benedizione | Re Calcagno, con corona |
+
+Attraversa con lo scheletro i cerchi numerati nell’ordine indicato: solo il sigillo attivo può essere sciolto. Il portale resta chiuso finché non sono tutti completati. I livelli 8, 9 e 10 richiedono anche di tornare indietro. Sotto il campo trovi un suggerimento specifico per il percorso.
 
 Dopo ogni portale scegli **Prossimo livello**, oppure riprova la tappa per migliorare il punteggio. Dopo la decima anima appare il finale con il totale dei colpi: non esiste un undicesimo livello. Puoi tornare al menu e iniziare una nuova campagna. Il progresso resta nella sessione corrente; ricaricare la pagina lo azzera.
 
@@ -64,7 +66,7 @@ Con il server di sviluppo attivo in un altro terminale e Chromium installato:
 CHROMIUM_PATH=/usr/bin/chromium npm run test:browser
 ```
 
-Il test browser usa solo i comandi reali per completare tutta la campagna. Verifica menu/ripresa, mira e limiti dell'angolo, riavvio, avanzamento, finale, nuova partita, audio, layout mobile e assenza di errori JavaScript. Puoi impostare `TEST_URL` per un server di preview o un deployment. Gli screenshot sono salvati in `/tmp/father-*.png`.
+Il test browser verifica menu/ripresa, mira e limiti dell’angolo, riavvio, contatore dei sigilli, suggerimento, audio, layout mobile e assenza di errori JavaScript. La suite fisica riproduce sequenze di colpi per tutti i dieci percorsi; una seconda suite verifica che il prete possa raggiungere ogni posizione di tiro camminando e saltando. Le sequenze si rigenerano con `node scripts/solve-routes.mjs`. Puoi impostare `TEST_URL` per un server di preview o un deployment. Gli screenshot sono salvati in `/tmp/father-*.png`.
 
 ## Pubblicare su Vercel
 
