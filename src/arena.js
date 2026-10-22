@@ -1,10 +1,14 @@
 export const FLOOR=442, WIDTH=960, CENTER=480;
+export const PLAYER_MIN=WIDTH/3, PLAYER_MAX=WIDTH*2/3, EXPLOSION_POWER=.9;
+export function movePlayer(game,axis,dt=1/60){
+ if(!game.over)game.playerX=Math.max(PLAYER_MIN,Math.min(PLAYER_MAX,game.playerX+Math.sign(axis)*150*dt));
+}
 export const TYPES={
  skeleton:{name:'Scheletro',speed:48,threshold:.35,recovery:.65,color:'#ddd8bc'},
  zombie:{name:'Zombie',speed:30,threshold:.5,recovery:1.4,color:'#91a579'},
  monster:{name:'Mostro',speed:38,threshold:.65,recovery:.35,color:'#bd837b'},
 };
-export function createArena(){return {enemies:[],elapsed:0,spawnIn:1,nextId:0,score:0,explosions:0,lives:5,invulnerable:0,over:false,events:[]};}
+export function createArena(){return {playerX:CENTER,enemies:[],elapsed:0,spawnIn:1,nextId:0,score:0,explosions:0,lives:5,invulnerable:0,over:false,events:[]};}
 export function spawnEnemy(game,type,side){
  const enemy={id:game.nextId++,type,x:side<0?-25:WIDTH+25,y:FLOOR,vx:0,vy:0,rotation:0,state:'approach',stun:0,age:0};
  game.enemies.push(enemy);return enemy;
@@ -12,10 +16,10 @@ export function spawnEnemy(game,type,side){
 export function hitEnemy(game,facing,power){
  if(game.over)return null;
  power=Math.max(0,Math.min(1,power));
- const enemy=game.enemies.filter(e=>e.state!=='dead'&&e.state!=='flight'&&(e.x-CENTER)*facing>=-8&&Math.abs(e.x-CENTER)<=105&&Math.abs(e.y-FLOOR)<70).sort((a,b)=>Math.abs(a.x-CENTER)-Math.abs(b.x-CENTER))[0];
+ const enemy=game.enemies.filter(e=>e.state!=='dead'&&e.state!=='flight'&&(e.x-game.playerX)*facing>=-8&&Math.abs(e.x-game.playerX)<=105&&Math.abs(e.y-FLOOR)<70).sort((a,b)=>Math.abs(a.x-game.playerX)-Math.abs(b.x-game.playerX))[0];
  if(!enemy)return null;
  const config=TYPES[enemy.type];
- if(power>=1){enemy.state='dead';game.explosions++;game.events.push({type:'explode',x:enemy.x,y:enemy.y-25,color:config.color});return 'explode';}
+ if(power>=EXPLOSION_POWER){enemy.state='dead';game.explosions++;game.events.push({type:'explode',x:enemy.x,y:enemy.y-25,color:config.color});return 'explode';}
  if(power>=config.threshold){enemy.state='flight';enemy.vx=facing*(650+power*350);enemy.vy=-230-power*150;game.events.push({type:'launch',x:enemy.x,y:enemy.y-25});return 'launch';}
  enemy.state='stunned';enemy.vx=facing*(110+power*260);enemy.vy=-65;enemy.stun=config.recovery;game.events.push({type:'push',x:enemy.x,y:enemy.y-25});return 'push';
 }
@@ -43,10 +47,10 @@ export function stepArena(game,dt=1/60,rng=Math.random){
   }else{
    // Skeletons hurry steadily; zombies stagger; monsters telegraph then rush.
    const rhythm=e.type==='zombie'?.65+.35*Math.sin(e.age*5)**2:e.type==='monster'?(e.age%3<2.2?.55:3.1):1;
-   const direction=Math.sign(CENTER-e.x);
+   const direction=Math.sign(game.playerX-e.x);
    e.x+=direction*config.speed*(1+game.elapsed/240)*rhythm*dt;
-   if(Math.abs(e.x-CENTER)<24){
-    if(game.invulnerable===0){game.lives--;game.invulnerable=1.1;game.events.push({type:'hurt',x:CENTER,y:FLOOR-30});}
+   if(Math.abs(e.x-game.playerX)<24){
+    if(game.invulnerable===0){game.lives--;game.invulnerable=1.1;game.events.push({type:'hurt',x:game.playerX,y:FLOOR-30});}
     e.state='stunned';e.vx=-direction*190;e.vy=-50;e.stun=.7;
     if(game.lives<=0){game.over=true;break;}
    }

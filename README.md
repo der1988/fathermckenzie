@@ -1,16 +1,16 @@
 # Father McKenzie — La messa è infinita
 
-Arena di sopravvivenza in pixel art con umorismo nero. Il prete resta al centro del cimitero; i nemici arrivano da entrambi i lati senza un ultimo livello. Grafica Canvas 2D, mazza animata, nemici in volo e particelle di esplosione.
+Arena di sopravvivenza in pixel art con umorismo nero. Il prete si muove nel terzo centrale del cimitero, davanti alla chiesa; i nemici arrivano da entrambi i lati senza un ultimo livello. Grafica Canvas 2D, mazza animata, nemici in volo e particelle di esplosione.
 
 ## Regole e comandi
 
-- **← / →**: girati a sinistra o destra. Il prete non si sposta.
+- **← / →**: tieni premuto per camminare e girarti. Movimento limitato fra un terzo e due terzi della larghezza del campo.
 - **A oppure Spazio**: tieni per caricare, rilascia per colpire il nemico più vicino davanti a te, entro il cerchio tratteggiato. La carica massima richiede un secondo; il colpo impiega un breve swing prima dell’impatto.
 - Colpo debole: respinge il nemico, che torna all’attacco. Nessun punto.
 - Colpo medio/forte: lancia il nemico. **+1 solo quando esce lateralmente dall’arena**.
-- Carica al **100%**: il nemico esplode. **0 punti**, anche se vicino al bordo.
+- Carica dal **90% al 100%**: il nemico esplode. **0 punti**, anche se vicino al bordo.
 - **Esc / Menu**: pausa e ripresa. **R**: nuova partita.
-- Su touch usa i pulsanti sotto il campo; tieni premuto il pulsante centrale per caricare.
+- Su touch usa i pulsanti sotto il campo; tieni premute le frecce per camminare, tieni premuto il pulsante centrale per caricare.
 
 Cinque vite; breve invulnerabilità dopo ogni danno. A zero vite termina la partita, con punteggio e tempo. Il record è salvato localmente quando il browser lo consente. Cambio scheda o perdita di focus mettono in pausa senza colpire involontariamente.
 

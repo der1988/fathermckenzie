@@ -39,3 +39,14 @@ test('monster rush and zombie stagger differ from steady skeleton movement',()=>
  const g=createArena();g.spawnIn=1e9;const m=spawnEnemy(g,'monster',1);m.x=900;m.age=2.3;const s=spawnEnemy(g,'skeleton',1);s.x=900;const z=spawnEnemy(g,'zombie',1);z.x=900;
  stepArena(g);assert.ok(m.x<s.x);assert.ok(s.x<z.x);
 });
+test('explosion window includes 90–100% but preserves strong home runs below it',()=>{
+ for(const type of Object.keys(TYPES)){
+  const near=nearby(type);assert.equal(hitEnemy(near.g,1,.899),'launch');
+  for(const power of [.9,.95,1]){const {g}=nearby(type);assert.equal(hitEnemy(g,1,power),'explode');stepArena(g);assert.equal(g.score,0);}
+ }
+});
+test('attacks and enemy pursuit follow the player instead of the screen center',()=>{
+ const {g,e}=nearby('skeleton');g.playerX=640;e.x=700;assert.equal(hitEnemy(g,1,.5),'launch');
+ const a=spawnEnemy(g,'zombie',-1);a.x=600;const before=a.x;stepArena(g);assert.ok(a.x>before);
+ a.x=625;stepArena(g);assert.equal(g.lives,4);
+});

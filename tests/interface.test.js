@@ -16,7 +16,7 @@ function interfaceFixture(){
 }
 test('menu, render, turning, timed full charge, explosion, pause, restart and death UI',()=>{
  const {sandbox:s,element,key,events}=interfaceFixture();element('#play').onclick();s.tick();assert.equal(element('#welcome').hidden,true);
- key('keydown','ArrowLeft');assert.equal(s.inspect().priest.x,480);assert.equal(s.inspect().priest.facing,-1);
+ key('keydown','ArrowLeft');assert.equal(s.inspect().priest.x,480);assert.equal(s.inspect().priest.facing,-1);key('keyup','ArrowLeft');
  key('keydown','KeyA');for(let i=0;i<60;i++)s.tick();assert.equal(s.inspect().charge,1);
  const e=arena.spawnEnemy(s.inspect().game,'monster',-1);e.x=425;
  key('keyup','KeyA');for(let i=0;i<10;i++)s.tick();assert.equal(s.inspect().game.explosions,1);assert.equal(element('#score').textContent,'00');
@@ -31,4 +31,13 @@ test('touch direction and hold/release use the same attack; cancellation never s
  element('#bat').onpointerdown({pointerId:1,preventDefault(){}});for(let i=0;i<30;i++)s.tick();assert.ok(s.inspect().charge>=.49);
  element('#bat').onpointercancel();assert.equal(s.inspect().swing,0);assert.equal(s.inspect().charging,false);
  element('#right').onclick();element('#bat').onpointerdown({pointerId:2,preventDefault(){}});for(let i=0;i<45;i++)s.tick();element('#bat').onpointerup();assert.equal(s.inspect().swing,24);
+});
+test('keyboard and touch movement stay in the middle third and clear on pause/reset',()=>{
+ const {sandbox:s,element,key}=interfaceFixture();element('#play').onclick();s.inspect().game.spawnIn=1e9;
+ key('keydown','ArrowLeft');for(let i=0;i<100;i++)s.tick();assert.equal(s.inspect().priest.x,320);assert.equal(s.inspect().game.playerX,320);
+ key('keyup','ArrowLeft');key('keydown','ArrowRight');for(let i=0;i<180;i++)s.tick();assert.equal(s.inspect().priest.x,640);
+ key('keydown','Escape');element('#resume').onclick();s.tick();assert.equal(s.inspect().priest.x,640);
+ element('#left').onpointerdown({pointerId:3,preventDefault(){}});for(let i=0;i<20;i++)s.tick();assert.equal(s.inspect().priest.x,590);
+ element('#left').onpointercancel();s.tick();assert.equal(s.inspect().priest.x,590);
+ element('#reset').onclick();assert.equal(s.inspect().priest.x,480);s.tick();assert.equal(s.inspect().priest.x,480);
 });

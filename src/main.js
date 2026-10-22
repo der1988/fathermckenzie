@@ -3,24 +3,25 @@ import '@fontsource/dm-sans/400.css';
 import '@fontsource/dm-sans/500.css';
 import '@fontsource/dm-sans/700.css';
 import './style.css';
-import {createArena,stepArena,hitEnemy,TYPES,FLOOR,CENTER} from './arena.js';
+import {createArena,stepArena,hitEnemy,TYPES,FLOOR,CENTER,PLAYER_MIN,PLAYER_MAX,EXPLOSION_POWER,movePlayer} from './arena.js';
 const canvas=document.querySelector('#game'),ctx=canvas.getContext('2d'),$=s=>document.querySelector(s);
 const W=960,H=540,CHARACTER_SCALE=1;
 const palette={lime:'#dced97',orange:'#ef934e'};
 let game=createArena(),started=false,hasRun=false,charge=0,charging=false,swing=0,swingPower=0,swingStart=0,swingFacing=1;
 let shake=0,flash=0,time=0,particles=[],labels=[],soundEnabled=false,audio;
 let priest={x:CENTER,y:FLOOR,facing:1,walking:false,grounded:true,gait:0,landing:0,vy:0};
+const moveKeys=new Set();
 let best=0;try{best=Number(localStorage.getItem('father-arena-best'))||0}catch{}
 function refreshHUD(){
  $('#score').textContent=String(game.score).padStart(2,'0');$('#lives').textContent='✝'.repeat(Math.max(0,game.lives));
  $('#wave').textContent=`ORDA ${1+Math.floor(game.elapsed/20)} · ${Math.floor(game.elapsed)}s`;
  $('#best').textContent=best;$('#explosions').textContent=game.explosions;
- $('#power-fill').style.width=`${charge*100}%`;$('#power-fill').style.background=charge>=1?'#df7264':'#dced97';
- $('#power-label').textContent=charging?`${Math.round(charge*100)}% · ${charge>=1?'ESPLOSIONE · 0 PUNTI':charge>=.65?'FUORICAMPO PER TUTTI':charge>=.5?'FUORICAMPO SCHELETRI / ZOMBIE':charge>=.35?'FUORICAMPO SCHELETRI':'RESPINTA'}`:'TIENI A O SPAZIO · RILASCIA PER COLPIRE';
+ $('#power-fill').style.width=`${charge*100}%`;$('#power-fill').style.background=charge>=EXPLOSION_POWER?'#df7264':'#dced97';
+ $('#power-label').textContent=charging?`${Math.round(charge*100)}% · ${charge>=EXPLOSION_POWER?'ESPLOSIONE · 0 PUNTI':charge>=.65?'FUORICAMPO PER TUTTI':charge>=.5?'FUORICAMPO SCHELETRI / ZOMBIE':charge>=.35?'FUORICAMPO SCHELETRI':'RESPINTA'}`:'TIENI A O SPAZIO · RILASCIA PER COLPIRE';
 }
 function cancelCharge(){charging=false;charge=0;chargeKey=null;}
-function start(){game=createArena();started=true;hasRun=true;cancelCharge();swing=0;particles=[];labels=[];priest.facing=1;$('#welcome').hidden=true;$('#victory').hidden=true;$('#status').textContent='La messa è finita. L’assedio no.';refreshHUD();canvas.focus({preventScroll:true});}
-function openMenu(){started=false;cancelCharge();$('#welcome').hidden=false;$('#victory').hidden=true;$('#resume').hidden=!hasRun||game.over;refreshHUD();}
+function start(){game=createArena();started=true;hasRun=true;cancelCharge();swing=0;particles=[];labels=[];priest.facing=1;priest.x=CENTER;priest.walking=false;moveKeys.clear();$('#welcome').hidden=true;$('#victory').hidden=true;$('#status').textContent='La messa è finita. L’assedio no.';refreshHUD();canvas.focus({preventScroll:true});}
+function openMenu(){started=false;moveKeys.clear();priest.walking=false;cancelCharge();$('#welcome').hidden=false;$('#victory').hidden=true;$('#resume').hidden=!hasRun||game.over;refreshHUD();}
 function resume(){if(!hasRun||game.over)return;started=true;$('#welcome').hidden=true;canvas.focus({preventScroll:true});}
 $('#play').onclick=start;$('#again').onclick=start;$('#resume').onclick=resume;$('#menu').onclick=openMenu;$('#reset').onclick=start;
 $('#sound').onclick=()=>{soundEnabled=!soundEnabled;$('#sound span').textContent=soundEnabled?'ON':'OFF';$('#sound').setAttribute('aria-pressed',String(soundEnabled));tone(400)};
@@ -37,17 +38,24 @@ window.addEventListener('keydown',e=>{
  if(e.code==='Escape'){if(started)openMenu();else resume();return;}
  if(!started||game.over)return;
  if(e.code==='KeyR'){start();return;}
- if(e.code==='ArrowLeft')turn(-1);if(e.code==='ArrowRight')turn(1);
+ if(e.code==='ArrowLeft'){moveKeys.add('left-key');turn(-1)}if(e.code==='ArrowRight'){moveKeys.add('right-key');turn(1)}
  if(e.code==='KeyA'||e.code==='Space')beginCharge(e.code);
 });
-window.addEventListener('keyup',e=>{if(e.code===chargeKey)release()});
+window.addEventListener('keyup',e=>{if(e.code==='ArrowLeft')moveKeys.delete('left-key');if(e.code==='ArrowRight')moveKeys.delete('right-key');if(e.code===chargeKey)release()});
 window.addEventListener('blur',()=>{if(started&&!game.over)openMenu()});
 document.addEventListener('visibilitychange',()=>{if(document.hidden&&started&&!game.over)openMenu()});
-for(const [id,dir] of [['left',-1],['right',1]])$('#'+id).onclick=()=>{turn(dir);canvas.focus({preventScroll:true})};
+for(const [id,dir] of [['left',-1],['right',1]]){
+ const button=$('#'+id);
+ button.onclick=()=>{turn(dir);canvas.focus({preventScroll:true})};
+ button.onpointerdown=e=>{e.preventDefault();if(!started||game.over)return;button.setPointerCapture(e.pointerId);moveKeys.add(id+'-touch');turn(dir)};
+ const stop=()=>moveKeys.delete(id+'-touch');button.onpointerup=stop;button.onpointercancel=stop;button.onlostpointercapture=stop;
+}
 $('#bat').onpointerdown=e=>{e.preventDefault();$('#bat').setPointerCapture(e.pointerId);beginCharge('pointer')};
 $('#bat').onpointerup=()=>{if(chargeKey==='pointer')release()};$('#bat').onpointercancel=cancelCharge;
 function update(){
  if(started&&!game.over){
+  const axis=(moveKeys.has('right-key')||moveKeys.has('right-touch')?1:0)-(moveKeys.has('left-key')||moveKeys.has('left-touch')?1:0);
+  const oldX=game.playerX;movePlayer(game,axis);priest.x=game.playerX;priest.walking=oldX!==priest.x;if(priest.walking)priest.gait+=.24;if(axis)turn(axis);
   time++;if(charging)charge=Math.min(1,charge+1/60);
   if(swing===16){const hit=hitEnemy(game,swingFacing,swingPower);if(!hit){$('#status').textContent='Aria benedetta. Aspetta che siano a portata.';tone(80,.08)}}
   if(swing>0)swing--;
@@ -77,8 +85,19 @@ function background(){
  for(let i=0;i<65;i++){let x=noise(i)*960,y=noise(i+81)*270;rect(x,y,i%7===0?2:1,1,i%3===0?'#8c9980':'#566e62')}
  rect(637,53,46,40,'#a7b58b');rect(630,61,60,25,'#a7b58b');rect(641,48,37,49,'#a7b58b');rect(650,57,12,7,'#929f7b');rect(673,72,10,12,'#929f7b');rect(638,78,9,6,'#bdc79c');
  for(let i=0;i<9;i++){let x=((i*149+time*(i%2?.09:.05))%1150)-150;rect(x,110+i%4*26,110+i%3*28,6,'#35493f');rect(x+20,104+i%4*26,65,6,'#35493f')}
- // Far church and cemetery skyline.
- rect(76,218,128,149,'#23342e');rect(113,152,45,190,'#23342e');line([[108,153],[135,110],[163,153]],'#23342e',9);rect(133,86,5,32,'#23342e');rect(122,96,27,5,'#23342e');rect(123,177,20,42,'#38473a');rect(131,177,4,42,'#23342e');rect(121,194,24,4,'#23342e');
+ // Central parish church: stepped stone facade, bell tower and warm windows.
+ rect(354,226,252,175,'#293b34');rect(366,235,228,166,'#34463b');
+ for(let i=0;i<7;i++)rect(350+i*17,226-i*12,260-i*34,12,'#23352f');
+ rect(451,127,58,133,'#2d4037');rect(445,123,70,12,'#52604b');
+ for(let i=0;i<5;i++)rect(447+i*7,123-i*12,66-i*14,12,'#23352f');
+ rect(478,42,5,37,'#9ca47b');rect(467,52,27,5,'#9ca47b');
+ rect(465,146,30,45,'#172a27');rect(471,153,18,25,'#a28c55');rect(468,176,24,5,'#bc9f60');
+ rect(476,142,5,36,'#3e4e3e');
+ for(const x of [390,548]){rect(x,274,23,49,'#192d27');rect(x+4,280,15,37,'#bd965854');rect(x+10,277,3,43,'#536049');rect(x+3,296,17,3,'#536049');}
+ rect(455,329,50,72,'#172823');rect(461,320,38,12,'#172823');rect(479,331,2,70,'#576149');
+ for(let y=246;y<394;y+=23)for(let x=372;x<591;x+=37)rect(x+(y%2?12:0),y,16,1,'#57604b40');
+ rect(346,401,268,8,'#58634c');rect(338,409,284,7,'#3c4c3c');
+ text('SAN NESSUNO',480,250,'#9aab7e',10,'center');
  for(let i=0;i<10;i++){const x=i*114-15;rect(x,329-noise(i)*25,37,75,'#2a3b31');rect(x+5,321-noise(i)*25,27,8,'#2a3b31')}
  // Wrought iron fence.
  rect(0,361,960,3,'#26372d');rect(0,393,960,3,'#26372d');for(let x=8;x<960;x+=23){rect(x,343,3,83,'#24372d');line([[x-3,348],[x+1,337],[x+5,348]],'#24372d',2)}
@@ -134,7 +153,7 @@ function drawPriest(){
  ctx.restore();
  if(swing>0&&progress>.2&&progress<.48){ctx.strokeStyle='#e4dda580';ctx.lineWidth=3;ctx.beginPath();ctx.arc(6,-37,51,batAngle-.55,batAngle);ctx.stroke()}
  ctx.restore();ctx.restore();
- if(charging){rect(x-23,y-66,46,7,'#19221b');rect(x-21,y-64,Math.round(42*charge),3,charge>=1?'#ed6660':charge>=.35?'#dced97':'#a0b6bb');text(`${Math.round(charge*100)}%`,x,y-72,palette.lime,8,'center')}
+ if(charging){rect(x-23,y-66,46,7,'#19221b');rect(x-21,y-64,Math.round(42*charge),3,charge>=EXPLOSION_POWER?'#ed6660':charge>=.35?'#dced97':'#a0b6bb');text(`${Math.round(charge*100)}%`,x,y-72,palette.lime,8,'center')}
  if(started)text('PADRE McKENZIE',x,y+19,'#c4cda6',7,'center');
 }
 function drawEnemy(e){
@@ -157,7 +176,8 @@ function drawEnemy(e){
 function draw(){
  ctx.save();if(shake>.2)ctx.translate((Math.random()-.5)*shake,(Math.random()-.5)*shake);background();
  // The dotted semicircles show bat reach, not a predicted shot.
- ctx.strokeStyle='#dced9730';ctx.setLineDash([3,7]);ctx.beginPath();ctx.ellipse(CENTER,FLOOR,105,22,0,0,Math.PI*2);ctx.stroke();ctx.setLineDash([]);
+ ctx.strokeStyle='#dced9730';ctx.setLineDash([3,7]);ctx.beginPath();ctx.ellipse(priest.x,FLOOR,105,22,0,0,Math.PI*2);ctx.stroke();ctx.setLineDash([]);
+ line([[PLAYER_MIN,FLOOR+7],[PLAYER_MIN,FLOOR+19]],'#b2c780',2);line([[PLAYER_MAX,FLOOR+7],[PLAYER_MAX,FLOOR+19]],'#b2c780',2);
  text('← FUORICAMPO +1',110,320,'#b3bd91',10,'center');text('FUORICAMPO +1 →',850,320,'#b3bd91',10,'center');
  for(const e of game.enemies)drawEnemy(e);
  ctx.globalAlpha=game.invulnerable>0&&Math.floor(time/5)%2?.35:1;drawPriest();ctx.globalAlpha=1;
